@@ -3,6 +3,7 @@ import Navbar from './components/Navbar.jsx'
 import ImportDialog from './components/ImportDialog.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import About from './pages/About.jsx'
+import Macro from './pages/Macro.jsx'
 import { useCoins } from './hooks/useCoins.js'
 import { useCurrency } from './hooks/useCurrency.js'
 import { useWatchlist } from './hooks/useWatchlist.js'
@@ -10,7 +11,9 @@ import { cleanSyncFromUrl, parseSyncPayloadFromLocation } from './utils/sync.js'
 
 function viewFromPath(pathname = window.location.pathname) {
   const path = pathname.replace(/\/+$/, '') || '/'
-  return path === '/about' ? 'about' : 'dashboard'
+  if (path === '/about') return 'about'
+  if (path === '/macro') return 'macro'
+  return 'dashboard'
 }
 
 export default function App() {
@@ -23,7 +26,7 @@ export default function App() {
   const { coins, status, error, warning, updatedAt, reload } = useCoins(currency, watchlist)
 
   const navigate = useCallback((next) => {
-    const path = next === 'about' ? '/about' : '/'
+    const path = next === 'about' ? '/about' : next === 'macro' ? '/macro' : '/'
     if (window.location.pathname !== path) {
       window.history.pushState(null, '', path)
     }
@@ -68,7 +71,7 @@ export default function App() {
         currency={currency}
         onCurrencyChange={setCurrency}
       />
-      <main className="container">
+      <main className={view === 'macro' ? 'container container-wide' : 'container'}>
         {view === 'dashboard' ? (
           <Dashboard
             coins={coins}
@@ -83,6 +86,8 @@ export default function App() {
             query={query}
             onRequestImport={setImportPayload}
           />
+        ) : view === 'macro' ? (
+          <Macro />
         ) : (
           <About />
         )}

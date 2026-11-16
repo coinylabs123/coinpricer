@@ -33,6 +33,13 @@ export default function Navbar({
           </button>
           <button
             type="button"
+            className={view === 'macro' ? 'nav-link active' : 'nav-link'}
+            onClick={() => onNavigate('macro')}
+          >
+            Macro
+          </button>
+          <button
+            type="button"
             className={view === 'about' ? 'nav-link active' : 'nav-link'}
             onClick={() => onNavigate('about')}
           >
