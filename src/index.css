@@ -592,6 +592,48 @@ th.col-volume .th-btn {
   color: var(--muted);
 }
 
+/* Full-list search results */
+.more-results {
+  margin-top: 1.5rem;
+}
+
+.more-results-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.7rem;
+}
+
+.more-results-title {
+  font-size: 1.15rem;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.more-results-meta {
+  margin: 0 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.more-results-header .more-results-meta {
+  margin: 0;
+}
+
+.more-results .empty {
+  padding: 0.9rem 0 0.4rem;
+}
+
+.more-results .banner {
+  margin-bottom: 0.7rem;
+}
+
+.more-results .table-wrap {
+  margin-top: 0.2rem;
+}
+
 /* About */
 .about {
   background: var(--surface);

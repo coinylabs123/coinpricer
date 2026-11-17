@@ -1,4 +1,4 @@
-const BASE = 'https://api.coingecko.com/api/v3/coins/markets'
+const API = 'https://api.coingecko.com/api/v3'
 
 export class CoinGeckoError extends Error {
   constructor(message, { status, retryAfter, kind } = {}) {
@@ -22,11 +22,10 @@ function retryAfterSeconds(res) {
 
 const inflight = new Map()
 
-async function fetchMarkets(params) {
-  const url = `${BASE}?${params.toString()}`
+async function fetchJson(url) {
   if (inflight.has(url)) return inflight.get(url)
 
-  const request = fetchMarketsOnce(url)
+  const request = fetchJsonOnce(url)
   inflight.set(url, request)
   try {
     return await request
@@ -35,7 +34,7 @@ async function fetchMarkets(params) {
   }
 }
 
-async function fetchMarketsOnce(url) {
+async function fetchJsonOnce(url) {
   let res
   try {
     res = await fetch(url)
@@ -64,6 +63,10 @@ async function fetchMarketsOnce(url) {
   return res.json()
 }
 
+function marketsUrl(params) {
+  return `${API}/coins/markets?${params.toString()}`
+}
+
 export function fetchTopMarkets(vsCurrency) {
   const params = new URLSearchParams({
     vs_currency: vsCurrency,
@@ -73,7 +76,7 @@ export function fetchTopMarkets(vsCurrency) {
     price_change_percentage: '24h',
     sparkline: 'false',
   })
-  return fetchMarkets(params)
+  return fetchJson(marketsUrl(params))
 }
 
 export function fetchMarketsByIds(vsCurrency, ids) {
@@ -87,5 +90,9 @@ export function fetchMarketsByIds(vsCurrency, ids) {
     price_change_percentage: '24h',
     sparkline: 'false',
   })
-  return fetchMarkets(params)
+  return fetchJson(marketsUrl(params))
+}
+
+export function fetchCoinList() {
+  return fetchJson(`${API}/coins/list`)
 }

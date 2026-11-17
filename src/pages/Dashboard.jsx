@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import CoinTable, { sortCoins } from '../components/CoinTable.jsx'
+import { useCoinList } from '../hooks/useCoinList.js'
+import { useFullSearch } from '../hooks/useFullSearch.js'
 import { formatUpdatedAt } from '../utils/format.js'
 import { buildSyncUrl, downloadWatchlistFile, parseWatchlistFile } from '../utils/sync.js'
 
@@ -25,6 +27,7 @@ export default function Dashboard({
   const fileRef = useRef(null)
 
   const watchlistSet = useMemo(() => new Set(watchlist), [watchlist])
+  const { coins: coinList, status: coinListStatus, error: coinListError } = useCoinList()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -50,12 +53,45 @@ export default function Dashboard({
     return sortCoins(list, sortKey, sortDir)
   }, [coins, tab, watchlistSet, query, sortKey, sortDir])
 
+  const excludeIds = useMemo(() => new Set(filtered.map((c) => c.id)), [filtered])
+  const searching = Boolean(query.trim())
+  const {
+    results: moreResults,
+    status: moreStatus,
+    error: moreError,
+    truncated,
+  } = useFullSearch({
+    query,
+    currency,
+    excludeIds,
+    loadedCoins: coins,
+    coinList,
+    coinListStatus,
+    coinListError,
+    enabled: searching,
+  })
+  const [moreSortKey, setMoreSortKey] = useState(null)
+  const [moreSortDir, setMoreSortDir] = useState('asc')
+  const moreSorted = useMemo(() => {
+    if (!moreResults.length || !moreSortKey) return moreResults
+    return sortCoins(moreResults, moreSortKey, moreSortDir)
+  }, [moreResults, moreSortKey, moreSortDir])
+
   function handleSort(key) {
     if (key === sortKey) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
     } else {
       setSortKey(key)
       setSortDir(key === 'name' || key === 'market_cap_rank' ? 'asc' : 'desc')
+    }
+  }
+
+  function handleMoreSort(key) {
+    if (key === moreSortKey) {
+      setMoreSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setMoreSortKey(key)
+      setMoreSortDir(key === 'name' || key === 'market_cap_rank' ? 'asc' : 'desc')
     }
   }
 
@@ -104,6 +140,24 @@ export default function Dashboard({
 
   const loading = status === 'loading'
   const failed = status === 'error'
+  const showMoreSection =
+    searching &&
+    (moreResults.length > 0 ||
+      moreStatus === 'loading' ||
+      moreStatus === 'error' ||
+      moreStatus === 'idle' ||
+      (moreStatus === 'success' && filtered.length === 0))
+  const showMainTable =
+    coins.length > 0 && !(tab === 'watchlist' && watchlist.length === 0) && !failed && filtered.length > 0
+
+  function moreErrorMessage() {
+    if (!moreError) return ''
+    if (moreError.kind === 'rate_limit') return moreError.message
+    if (coinListStatus === 'error' && !moreResults.length) {
+      return "Couldn't load the full coin list. You can still search the top 100."
+    }
+    return "Couldn't load prices for some search results. The rest of the page is unchanged."
+  }
 
   return (
     <section className="dashboard">
@@ -211,7 +265,11 @@ export default function Dashboard({
         <p className="empty">None of your watched coins match this search, or their prices have not loaded yet.</p>
       ) : null}
 
-      {coins.length > 0 && !(tab === 'watchlist' && watchlist.length === 0) && !failed ? (
+      {tab === 'all' && searching && !filtered.length && !loading && !failed && coins.length > 0 ? (
+        <p className="empty">None of the top 100 coins match this search.</p>
+      ) : null}
+
+      {showMainTable ? (
         <CoinTable
           coins={filtered}
           currency={currency}
@@ -223,8 +281,42 @@ export default function Dashboard({
         />
       ) : null}
 
+      {showMoreSection ? (
+        <section className="more-results" aria-live="polite">
+          <div className="more-results-header">
+            <h2 className="more-results-title">More results from all coins</h2>
+            {truncated ? <p className="more-results-meta">Showing the top 50 matches.</p> : null}
+          </div>
+          {moreStatus === 'idle' || (moreStatus === 'loading' && !moreResults.length) ? (
+            <p className="more-results-meta">
+              {coinListStatus === 'loading' && !coinList.length
+                ? 'Loading the full coin list…'
+                : 'Searching all coins…'}
+            </p>
+          ) : null}
+          {moreStatus === 'loading' && moreResults.length ? (
+            <p className="more-results-meta">Loading prices…</p>
+          ) : null}
+          {moreError ? <p className="banner banner-warn">{moreErrorMessage()}</p> : null}
+          {moreSorted.length ? (
+            <CoinTable
+              coins={moreSorted}
+              currency={currency}
+              watchlistSet={watchlistSet}
+              onToggleWatch={onToggleWatch}
+              sortKey={moreSortKey}
+              sortDir={moreSortDir}
+              onSort={handleMoreSort}
+            />
+          ) : moreStatus === 'success' && !moreError ? (
+            <p className="empty">No other coins match this search.</p>
+          ) : null}
+        </section>
+      ) : null}
+
       <p className="fine-print">
         Prices load once when you open or refresh this page. Nothing is polled in the background.
+        Search can look up CoinGecko&apos;s full coin list, which is cached in this browser for 24 hours.
         Watchlist and currency are saved in this browser. Data from CoinGecko.
       </p>
     </section>

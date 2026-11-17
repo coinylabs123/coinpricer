@@ -59,7 +59,7 @@ export default function Navbar({
             <input
               id="coin-search"
               type="search"
-              placeholder="Search"
+              placeholder="Search all coins"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               autoComplete="off"
