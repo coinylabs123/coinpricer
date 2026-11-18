@@ -162,18 +162,18 @@ function SignalCard({ s }) {
 }
 
 const PERP_COLS = [
-  { key: 'coin', label: 'Coin' },
-  { key: 'fundingPct', label: 'Funding /8h', title: 'OI-weighted across venues, 8h-equivalent' },
-  { key: 'annualizedPct', label: 'APR' },
-  { key: 'predictedPct', label: 'Predicted /8h', title: 'Average of venues that publish a predicted/indicative next rate (OKX, Hyperliquid, Gate, dYdX)' },
-  { key: 'okx24hPct', label: 'OKX 24h avg', title: 'Average settled funding over 24h (OKX funding-rate history)' },
-  { key: 'okx7dPct', label: 'OKX 7d avg' },
-  { key: 'nextFundingTime', label: 'Next funding', title: 'OKX next settlement, your local time' },
-  { key: 'oiUsd', label: 'Open interest' },
-  { key: 'oiPct', label: 'OI % mcap' },
-  { key: 'premiumPct', label: 'Premium', title: 'Average (mark − index) / index across venues' },
-  { key: 'positioning', label: 'Positioning' },
-  { key: 'squeeze', label: 'Squeeze risk' },
+  { key: 'coin', label: 'Coin', className: 'perp-col-coin' },
+  { key: 'fundingPct', label: 'Funding /8h', shortLabel: 'Funding', title: 'OI-weighted across venues, 8h-equivalent', className: 'perp-col-main' },
+  { key: 'annualizedPct', label: 'APR', className: 'perp-col-optional' },
+  { key: 'predictedPct', label: 'Predicted /8h', title: 'Average of venues that publish a predicted/indicative next rate (OKX, Hyperliquid, Gate, dYdX)', className: 'perp-col-optional' },
+  { key: 'okx24hPct', label: 'OKX 24h avg', title: 'Average settled funding over 24h (OKX funding-rate history)', className: 'perp-col-optional' },
+  { key: 'okx7dPct', label: 'OKX 7d avg', className: 'perp-col-optional' },
+  { key: 'nextFundingTime', label: 'Next funding', title: 'OKX next settlement, your local time', className: 'perp-col-optional' },
+  { key: 'oiUsd', label: 'Open interest', shortLabel: 'OI', className: 'perp-col-main' },
+  { key: 'oiPct', label: 'OI % mcap', className: 'perp-col-optional' },
+  { key: 'premiumPct', label: 'Premium', title: 'Average (mark − index) / index across venues', className: 'perp-col-optional' },
+  { key: 'positioning', label: 'Positioning', className: 'perp-col-optional' },
+  { key: 'squeeze', label: 'Squeeze risk', shortLabel: 'Squeeze', className: 'perp-col-main' },
 ]
 
 function sortValue(row, key) {
@@ -226,7 +226,7 @@ function PerpsTable({ rows, venueStatus }) {
           <thead>
             <tr>
               {PERP_COLS.map((c) => (
-                <th key={c.key} title={c.title}>
+                <th key={c.key} title={c.title} className={c.className}>
                   <button
                     type="button"
                     className="th-sort"
@@ -234,7 +234,8 @@ function PerpsTable({ rows, venueStatus }) {
                       setSort((s) => ({ key: c.key, dir: s.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))
                     }
                   >
-                    {c.label}
+                    <span className="th-label-full">{c.label}</span>
+                    <span className="th-label-short">{c.shortLabel || c.label}</span>
                     {sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
                   </button>
                 </th>
@@ -245,23 +246,23 @@ function PerpsTable({ rows, venueStatus }) {
             {sorted.map((r) => (
               <Fragment key={r.coin}>
                 <tr className="perp-row" onClick={() => toggle(r.coin)}>
-                  <td className="perp-coin">
+                  <td className="perp-coin perp-col-coin">
                     <span className="expander">{open.has(r.coin) ? '▾' : '▸'}</span> {r.coin}
                     <span className="perp-venue-count">{r.venues.length}v</span>
                   </td>
-                  <td className={r.fundingPct < 0 ? 'change-down' : r.fundingPct > 0.01 ? 'change-up' : ''}>{spct(r.fundingPct)}</td>
-                  <td>{spct(r.annualizedPct, 1)}</td>
-                  <td>{spct(r.predictedPct)}</td>
-                  <td>{spct(r.okx24hPct)}</td>
-                  <td>{spct(r.okx7dPct)}</td>
-                  <td className="nowrap">{timeUntil(r.nextFundingTime)}</td>
-                  <td>{usd(r.oiUsd)}</td>
-                  <td>
+                  <td className={`perp-col-main ${r.fundingPct < 0 ? 'change-down' : r.fundingPct > 0.01 ? 'change-up' : ''}`}>{spct(r.fundingPct)}</td>
+                  <td className="perp-col-optional">{spct(r.annualizedPct, 1)}</td>
+                  <td className="perp-col-optional">{spct(r.predictedPct)}</td>
+                  <td className="perp-col-optional">{spct(r.okx24hPct)}</td>
+                  <td className="perp-col-optional">{spct(r.okx7dPct)}</td>
+                  <td className="nowrap perp-col-optional">{timeUntil(r.nextFundingTime)}</td>
+                  <td className="perp-col-main">{usd(r.oiUsd)}</td>
+                  <td className="perp-col-optional">
                     {pctf(r.oiPct)} <span className={`oi-tag oi-${r.oiLevel.key}`}>{r.oiLevel.label}</span>
                   </td>
-                  <td>{spct(r.premiumPct, 3)}</td>
-                  <td><span className={`pos-pill pos-${r.positioning.key}`}>{r.positioning.label}</span></td>
-                  <td><span className={`sq-pill sq-${r.squeeze.key}`}>{r.squeeze.label}</span></td>
+                  <td className="perp-col-optional">{spct(r.premiumPct, 3)}</td>
+                  <td className="perp-col-optional"><span className={`pos-pill pos-${r.positioning.key}`}>{r.positioning.label}</span></td>
+                  <td className="perp-col-main"><span className={`sq-pill sq-${r.squeeze.key}`}>{r.squeeze.label}</span></td>
                 </tr>
                 {open.has(r.coin) && (
                   <tr className="perp-detail">
@@ -271,13 +272,13 @@ function PerpsTable({ rows, venueStatus }) {
                           <tr>
                             <th>Venue</th>
                             <th>Funding /8h</th>
-                            <th>APR</th>
-                            <th>Interval</th>
-                            <th>Predicted /8h</th>
-                            <th>Next funding</th>
+                            <th className="venue-optional">APR</th>
+                            <th className="venue-optional">Interval</th>
+                            <th className="venue-optional">Predicted /8h</th>
+                            <th className="venue-optional">Next funding</th>
                             <th>OI</th>
-                            <th>Mark</th>
-                            <th>Index / oracle</th>
+                            <th className="venue-optional">Mark</th>
+                            <th className="venue-optional">Index / oracle</th>
                             <th>Premium</th>
                           </tr>
                         </thead>
@@ -288,13 +289,13 @@ function PerpsTable({ rows, venueStatus }) {
                                 {v.venueLabel} <span className="venue-info" aria-label={v.note}>ⓘ</span>
                               </td>
                               <td>{spct(v.funding8h == null ? null : v.funding8h * 100)}</td>
-                              <td>{spct(v.funding8h == null ? null : v.funding8h * 100 * 3 * 365, 1)}</td>
-                              <td>{v.intervalH ? `${v.intervalH}h` : '—'}</td>
-                              <td>{spct(v.predicted8h == null ? null : v.predicted8h * 100)}</td>
-                              <td className="nowrap">{timeUntil(v.nextFundingTime)}</td>
+                              <td className="venue-optional">{spct(v.funding8h == null ? null : v.funding8h * 100 * 3 * 365, 1)}</td>
+                              <td className="venue-optional">{v.intervalH ? `${v.intervalH}h` : '—'}</td>
+                              <td className="venue-optional">{spct(v.predicted8h == null ? null : v.predicted8h * 100)}</td>
+                              <td className="nowrap venue-optional">{timeUntil(v.nextFundingTime)}</td>
                               <td>{usd(v.oiUsd)}</td>
-                              <td>{v.mark != null ? v.mark.toLocaleString() : '—'}</td>
-                              <td>{v.index != null ? v.index.toLocaleString() : '—'}</td>
+                              <td className="venue-optional">{v.mark != null ? v.mark.toLocaleString() : '—'}</td>
+                              <td className="venue-optional">{v.index != null ? v.index.toLocaleString() : '—'}</td>
                               <td>{spct(v.premium == null ? null : v.premium * 100, 3)}</td>
                             </tr>
                           ))}

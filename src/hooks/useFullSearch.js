@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchMarketsByIds } from '../api/coingecko.js'
 import { useDebouncedValue } from './useDebouncedValue.js'
+import { getCached, markNoData, putMarkets } from '../utils/marketCache.js'
 import { matchCoinList, placeholderMarket, SEARCH_LIMIT } from '../utils/searchCoins.js'
 
 export function useFullSearch({
@@ -13,17 +14,12 @@ export function useFullSearch({
   coinListError,
   enabled = true,
 }) {
-  const debouncedQuery = useDebouncedValue(query, 300)
+  const debouncedQuery = useDebouncedValue(query, 450)
   const [results, setResults] = useState([])
   const [status, setStatus] = useState('idle') // idle | loading | success | error
   const [error, setError] = useState(null)
   const [truncated, setTruncated] = useState(false)
   const requestId = useRef(0)
-  const priceCache = useRef(new Map())
-
-  useEffect(() => {
-    priceCache.current = new Map()
-  }, [currency])
 
   const loadedById = useMemo(() => {
     const map = new Map()
@@ -76,15 +72,26 @@ export function useFullSearch({
       return
     }
 
-    const placeholders = matches.map((coin) => {
-      const existing = loadedById.get(coin.id) || priceCache.current.get(`${currency}:${coin.id}`)
-      return existing ? { ...existing } : placeholderMarket(coin)
-    })
-    setResults(placeholders)
+    // Build rows from (1) coins already on the page, (2) cached search prices,
+    // (3) a placeholder. Ids CoinGecko has no market data for are flagged.
+    const rowFor = (coin, { allowStale = false } = {}) => {
+      const loaded = loadedById.get(coin.id)
+      if (loaded) return { ...loaded }
+      const hit = getCached(currency, coin.id)
+      if (hit?.coin) return { ...hit.coin }
+      if (hit?.noData) return { ...placeholderMarket(coin), _noData: true }
+      if (allowStale) {
+        const old = getCached(currency, coin.id, null)
+        if (old?.coin) return { ...old.coin, _staleAt: old.at }
+      }
+      return placeholderMarket(coin)
+    }
+
+    setResults(matches.map((coin) => rowFor(coin)))
 
     const missing = matches
       .map((coin) => coin.id)
-      .filter((id) => !loadedById.has(id) && !priceCache.current.has(`${currency}:${id}`))
+      .filter((cid) => !loadedById.has(cid) && !getCached(currency, cid))
 
     if (!missing.length) {
       requestId.current += 1
@@ -99,22 +106,17 @@ export function useFullSearch({
 
     fetchMarketsByIds(currency, missing)
       .then((markets) => {
+        // Cache even if the query moved on, so the work is not wasted.
+        putMarkets(currency, markets)
+        const got = new Set(markets.map((c) => c.id))
+        markNoData(currency, missing.filter((cid) => !got.has(cid)))
         if (id !== requestId.current) return
-        for (const coin of markets) {
-          priceCache.current.set(`${currency}:${coin.id}`, coin)
-        }
-        setResults(
-          matches.map((coin) => {
-            const existing =
-              loadedById.get(coin.id) ||
-              priceCache.current.get(`${currency}:${coin.id}`)
-            return existing ? { ...existing } : placeholderMarket(coin)
-          }),
-        )
+        setResults(matches.map((coin) => rowFor(coin)))
         setStatus('success')
       })
       .catch((err) => {
         if (id !== requestId.current) return
+        setResults(matches.map((coin) => rowFor(coin, { allowStale: true })))
         setError(err)
         setStatus('error')
       })

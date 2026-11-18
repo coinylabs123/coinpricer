@@ -5,9 +5,9 @@ const COLUMNS = [
   { key: 'market_cap_rank', label: '#', sort: true, className: 'col-rank' },
   { key: 'name', label: 'Name', sort: true, className: 'col-name' },
   { key: 'current_price', label: 'Price', sort: true, className: 'col-price' },
-  { key: 'price_change_percentage_24h_in_currency', label: '24h %', sort: true, className: 'col-change' },
+  { key: 'price_change_percentage_24h_in_currency', label: '24h %', shortLabel: '24h', sort: true, className: 'col-change' },
   { key: 'market_cap', label: 'Market cap', sort: true, className: 'col-mcap' },
-  { key: 'total_volume', label: 'Volume (24h)', sort: true, className: 'col-volume' },
+  { key: 'total_volume', label: 'Volume (24h)', shortLabel: 'Volume', sort: true, className: 'col-volume' },
 ]
 
 function sortValue(coin, key) {
@@ -53,7 +53,8 @@ function SortButton({ column, sortKey, sortDir, onSort }) {
       onClick={() => onSort(column.key)}
       aria-label={label}
     >
-      {column.label}
+      <span className="th-label-full">{column.label}</span>
+      <span className="th-label-short">{column.shortLabel || column.label}</span>
       <span className="sort-icon" aria-hidden="true">
         {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
       </span>
@@ -124,12 +125,27 @@ export default function CoinTable({
                       <span className="coin-icon-fallback" />
                     )}
                     <span className="coin-text">
-                      <span className="coin-name">{coin.name}</span>
+                      <span className="coin-name" title={coin.name}>{coin.name}</span>
                       <span className="coin-symbol">{coin.symbol}</span>
                     </span>
                   </span>
                 </td>
-                <td className="col-price num">{formatPrice(coin.current_price, currency)}</td>
+                <td className="col-price num">
+                  {coin._noData || (coin.current_price == null && 'last_updated' in coin) ? (
+                    <span className="price-note" title="CoinGecko lists this coin but has no current market data for it (often inactive or delisted).">
+                      No market data
+                    </span>
+                  ) : (
+                    <>
+                      {formatPrice(coin.current_price, currency)}
+                      {coin._staleAt ? (
+                        <span className="price-note" title={`Last saved price from ${new Date(coin._staleAt).toLocaleString()}`}>
+                          {' '}saved
+                        </span>
+                      ) : null}
+                    </>
+                  )}
+                </td>
                 <td className={`col-change num ${percentClass(change)}`}>
                   {formatPercent(change)}
                 </td>

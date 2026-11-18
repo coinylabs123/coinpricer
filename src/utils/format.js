@@ -3,22 +3,36 @@ const COMPACT = new Set(['usd', 'sgd', 'eur', 'gbp', 'aud', 'cad', 'jpy'])
 export function formatPrice(value, currency) {
   if (value == null || Number.isNaN(Number(value))) return '—'
   const abs = Math.abs(value)
+  const cur = currency.toUpperCase()
+
+  // Micro-cap prices (e.g. 0.000000000218) would round to 0.00 with fixed
+  // decimals, so show four significant digits instead.
+  if (abs > 0 && abs < 0.0001) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: cur,
+        minimumSignificantDigits: 2,
+        maximumSignificantDigits: 4,
+      }).format(value)
+    } catch {
+      return `${Number(value).toPrecision(4)} ${cur}`
+    }
+  }
+
   let maxFrac = 2
-  if (abs > 0 && abs < 0.0001) maxFrac = 8
-  else if (abs < 0.01) maxFrac = 6
-  else if (abs < 1) maxFrac = 4
-  else if (abs < 100) maxFrac = 2
-  else maxFrac = 2
+  if (abs > 0 && abs < 0.01) maxFrac = 6
+  else if (abs > 0 && abs < 1) maxFrac = 4
 
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency: currency.toUpperCase(),
-      minimumFractionDigits: maxFrac >= 2 ? 2 : maxFrac,
+      currency: cur,
+      minimumFractionDigits: 2,
       maximumFractionDigits: maxFrac,
     }).format(value)
   } catch {
-    return `${Number(value).toFixed(maxFrac)} ${currency.toUpperCase()}`
+    return `${Number(value).toFixed(maxFrac)} ${cur}`
   }
 }
 

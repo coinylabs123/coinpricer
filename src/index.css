@@ -490,6 +490,10 @@ select {
   color: var(--ink);
 }
 
+.th-label-short {
+  display: none;
+}
+
 .sort-icon {
   font-size: 0.65rem;
   opacity: 0.6;
@@ -548,6 +552,8 @@ th.col-volume .th-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .coin-id img {
@@ -566,16 +572,25 @@ th.col-volume .th-btn {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .coin-name {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16rem;
 }
 
 .coin-symbol {
   font-size: 0.75rem;
   text-transform: uppercase;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .change-up {
@@ -710,23 +725,215 @@ th.col-volume .th-btn {
 
 @media (max-width: 720px) {
   .navbar-inner {
-    padding: 0.7rem 0.9rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.45rem 0.7rem;
+    padding: 0.6rem 0.75rem;
+    align-items: center;
+  }
+
+  .brand {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 1.05rem;
+  }
+
+  .currency-select {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .nav-links {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .nav-link {
+    padding: 0.35rem 0.6rem;
+  }
+
+  .nav-search {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .nav-search-spacer {
+    display: none;
   }
 
   .container {
-    padding: 1rem 0.9rem 2.5rem;
+    padding: 1rem 0.75rem 2.5rem;
   }
 
   .page-header {
     flex-direction: column;
   }
 
+  .page-header h1,
+  .about h1 {
+    font-size: 1.45rem;
+  }
+
   .toolbar-actions {
     width: 100%;
   }
 
+  .toolbar-actions .btn {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.85rem;
+  }
+
   .about {
     padding: 1.2rem;
+  }
+
+  /* Compact two-line coin rows: name + price, then 24h% + volume. */
+  .table-wrap:not(.perps-wrap) {
+    overflow-x: hidden;
+  }
+
+  .coin-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    font-size: 0.9rem;
+  }
+
+  .coin-table thead,
+  .coin-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .coin-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f7f8fa;
+  }
+
+  .coin-table thead tr,
+  .coin-table tbody tr {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto auto;
+    column-gap: 0.5rem;
+    row-gap: 0.12rem;
+    align-items: center;
+    padding: 0.62rem 0.7rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .coin-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .coin-table th,
+  .coin-table td {
+    padding: 0;
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .coin-table thead th {
+    position: static;
+    background: transparent;
+  }
+
+  .col-rank,
+  .col-mcap,
+  th.col-rank,
+  th.col-mcap,
+  td.col-rank,
+  td.col-mcap {
+    display: none;
+  }
+
+  .col-star {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: auto;
+    align-self: center;
+  }
+
+  .col-name {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 0;
+    max-width: none;
+    white-space: normal;
+  }
+
+  .col-price,
+  th.col-price,
+  td.col-price {
+    grid-column: 3 / span 2;
+    grid-row: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  td.col-price {
+    font-weight: 600;
+  }
+
+  .col-change,
+  th.col-change,
+  td.col-change {
+    grid-column: 3;
+    grid-row: 2;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .col-volume,
+  th.col-volume,
+  td.col-volume {
+    grid-column: 4;
+    grid-row: 2;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th.col-price .th-btn,
+  th.col-change .th-btn,
+  th.col-volume .th-btn {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .th-label-full {
+    display: none;
+  }
+
+  .th-label-short {
+    display: inline;
+  }
+
+  .coin-name {
+    max-width: 100%;
+  }
+
+  .coin-id img,
+  .coin-icon-fallback {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .star-btn {
+    font-size: 1.2rem;
+  }
+
+  .price-note {
+    display: inline-block;
+    max-width: 9.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
   }
 }
 
@@ -794,7 +1001,7 @@ th.col-volume .th-btn {
 
 .macro-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 1rem;
 }
 
@@ -923,7 +1130,7 @@ p.macro-context {
 
 .bias-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 1rem;
 }
 
@@ -991,6 +1198,63 @@ p.macro-context {
 
 @media (max-width: 640px) {
   .bias-drivers { grid-template-columns: 1fr; }
+
+  .bias-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .bias-score {
+    font-size: 1.3rem;
+  }
+
+  .bias-panel,
+  .macro-card {
+    padding: 0.85rem 0.9rem;
+  }
+
+  .macro-value {
+    font-size: 1.2rem;
+  }
+
+  .section-sub {
+    display: block;
+    margin: 0.2rem 0 0;
+  }
+
+  .perp-col-optional {
+    display: none;
+  }
+
+  .venue-optional {
+    display: none;
+  }
+
+  .oi-tag,
+  .pos-pill,
+  .sq-pill {
+    font-size: 0.68rem;
+    padding: 0.06rem 0.35rem;
+  }
+
+  .perps-table {
+    font-size: 0.75rem;
+  }
+
+  .perps-table th,
+  .perps-table td {
+    padding: 0.4rem 0.32rem;
+  }
+
+  .perp-venue-count {
+    display: none;
+  }
+
+  .sq-pill {
+    font-size: 0.62rem;
+    padding: 0.04rem 0.25rem;
+  }
 }
 
 .bias-drivers h4 {
@@ -1076,6 +1340,24 @@ p.macro-context {
 .perps-table th:nth-last-child(-n + 2),
 .perps-table td:nth-last-child(-n + 2) {
   text-align: left;
+}
+
+.perps-table th:first-child,
+.perps-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.perps-table thead th:first-child {
+  background: #f8fafb;
+  z-index: 2;
+}
+
+.perp-row:hover td:first-child {
+  background: #f8fafb;
 }
 
 .perps-table thead th {
@@ -1175,4 +1457,10 @@ p.macro-context {
 
 .container-wide {
   max-width: 1440px;
+}
+
+.price-note {
+  font-size: 0.75rem;
+  color: var(--muted, #6c757d);
+  font-weight: 400;
 }

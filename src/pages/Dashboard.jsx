@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import CoinTable, { sortCoins } from '../components/CoinTable.jsx'
 import { useCoinList } from '../hooks/useCoinList.js'
 import { useFullSearch } from '../hooks/useFullSearch.js'
+import { useRateLimitNotice } from '../hooks/useRateLimitNotice.js'
+import { SEARCH_LIMIT } from '../utils/searchCoins.js'
 import { formatUpdatedAt } from '../utils/format.js'
 import { buildSyncUrl, downloadWatchlistFile, parseWatchlistFile } from '../utils/sync.js'
 
@@ -27,6 +29,7 @@ export default function Dashboard({
   const fileRef = useRef(null)
 
   const watchlistSet = useMemo(() => new Set(watchlist), [watchlist])
+  const retryIn = useRateLimitNotice()
   const { coins: coinList, status: coinListStatus, error: coinListError } = useCoinList()
 
   const filtered = useMemo(() => {
@@ -152,7 +155,9 @@ export default function Dashboard({
 
   function moreErrorMessage() {
     if (!moreError) return ''
-    if (moreError.kind === 'rate_limit') return moreError.message
+    if (moreError.kind === 'rate_limit') {
+      return 'CoinGecko is still rate-limiting after a few retries, so some prices are missing (rows marked "saved" show the last known price). Wait a minute, then search again.'
+    }
     if (coinListStatus === 'error' && !moreResults.length) {
       return "Couldn't load the full coin list. You can still search the top 100."
     }
@@ -230,6 +235,11 @@ export default function Dashboard({
 
       {copyError ? <p className="banner banner-info">{copyError}</p> : null}
       {toast ? <p className="banner banner-info">{toast}</p> : null}
+      {retryIn != null ? (
+        <p className="banner banner-warn" role="status">
+          CoinGecko rate limit hit (its free API allows only a few calls a minute). Retrying automatically in {retryIn}s…
+        </p>
+      ) : null}
       {warning ? <p className="banner banner-warn">{warning}</p> : null}
 
       {failed ? (
@@ -285,7 +295,7 @@ export default function Dashboard({
         <section className="more-results" aria-live="polite">
           <div className="more-results-header">
             <h2 className="more-results-title">More results from all coins</h2>
-            {truncated ? <p className="more-results-meta">Showing the top 50 matches.</p> : null}
+            {truncated ? <p className="more-results-meta">Showing the top {SEARCH_LIMIT} matches. Type more of the name to narrow it down.</p> : null}
           </div>
           {moreStatus === 'idle' || (moreStatus === 'loading' && !moreResults.length) ? (
             <p className="more-results-meta">

@@ -1,4 +1,4 @@
-export const SEARCH_LIMIT = 50
+export const SEARCH_LIMIT = 25
 
 function scoreMatch(coin, q) {
   const symbol = (coin.symbol || '').toLowerCase()
