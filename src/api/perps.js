@@ -153,6 +153,8 @@ export async function fetchHyperliquidPerps(coins = PERP_COINS) {
       mark,
       index: oracle,
       premium: premium(mark, oracle),
+      funding1h: f1h,
+      maxLeverage: num(u.maxLeverage),
       note: 'Hourly funding (shown ×8); OI × mark',
     }
   })

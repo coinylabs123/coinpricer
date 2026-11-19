@@ -1,10 +1,23 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useMacro, PERP_VENUE_KEYS } from '../hooks/useMacro.js'
 import { VENUES } from '../api/perps.js'
 import { biasFor, evaluateSignals, zoneFor } from '../utils/macroSignals.js'
 import { FUNDING_BANDS, OI_BANDS, buildPerpRows } from '../utils/perpsAnalysis.js'
 import { actionFor, carryFor, crowdingHint } from '../utils/macroSignalsExtra.js'
 import { formatCompact, formatUpdatedAt } from '../utils/format.js'
+import {
+  BLEND,
+  FULL_CALL_SHARE,
+  LIMITS,
+  LIQ_BUFFER_EM,
+  OVERALL_DAYS,
+  SIZING_DAYS,
+  loadSizing,
+  parseAmount,
+  saveSizing,
+  sizeFor,
+  sizeOverall,
+} from '../utils/positionSizing.js'
 
 const usd = (v) => (v == null ? '—' : formatCompact(v, 'usd'))
 const spct = (v, d = 4) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}%`)
@@ -80,6 +93,222 @@ function PerpRead({ h, bias, ext, ctx }) {
   )
 }
 
+
+// ---------------- Position sizing (Hyperliquid) ----------------
+const loadSizingDefaults = (s) => ({
+  ...s,
+  maxLev: s.maxLev || 3,
+  tailLossPct: s.tailLossPct || 30,
+  sigmaN: s.sigmaN || 6,
+})
+const usd0 = (v) => (v == null ? '—' : `$${Math.round(v).toLocaleString('en-US')}`)
+const fmtBal = (v) => (v == null ? '' : v.toLocaleString('en-US', { maximumFractionDigits: 2 }))
+const HLABEL = { ust: 'Ultra-short', st: 'Short-term', mt: 'Medium-term' }
+
+function NumField({ label, value, onChange, suffix, min, max, step, hint }) {
+  return (
+    <label className="sizing-field">
+      <span className="sizing-label">{label}</span>
+      <span className="sizing-input-wrap">
+        <input type="number" inputMode="decimal" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
+        {suffix && <span className="sizing-suffix">{suffix}</span>}
+      </span>
+      {hint && <span className="sizing-hint">{hint}</span>}
+    </label>
+  )
+}
+
+function SizingSettings({ settings, setSettings }) {
+  const [balText, setBalText] = useState(fmtBal(settings.balance))
+  const set = (k) => (v) => setSettings((s) => ({ ...s, [k]: v }))
+  return (
+    <div className="sizing-settings">
+      <div className="sizing-row">
+        <label className="sizing-field sizing-field-balance">
+          <span className="sizing-label">Perp account balance (USD)</span>
+          <span className="sizing-input-wrap">
+            <span className="sizing-prefix">$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="e.g. 10,000"
+              value={balText}
+              onChange={(e) => {
+                setBalText(e.target.value)
+                setSettings((s) => ({ ...s, balance: parseAmount(e.target.value) }))
+              }}
+              onBlur={() => setBalText(fmtBal(settings.balance))}
+              aria-label="Perp account balance in USD"
+            />
+          </span>
+        </label>
+        <NumField label="Max leverage" suffix="×" min={LIMITS.maxLev[0]} max={LIMITS.maxLev[1]} step={0.5}
+          value={settings.maxLev ?? ''} onChange={set('maxLev')} hint="capped by Hyperliquid's max" />
+        <NumField label="Max tail loss" suffix="% bal" min={LIMITS.tailLossPct[0]} max={LIMITS.tailLossPct[1]} step={1}
+          value={settings.tailLossPct ?? ''} onChange={set('tailLossPct')} />
+        <NumField label="Tail move" suffix="σ" min={LIMITS.sigmaN[0]} max={LIMITS.sigmaN[1]} step={0.5}
+          value={settings.sigmaN ?? ''} onChange={set('sigmaN')} />
+      </div>
+      <p className="sizing-note">
+        <span className="sustain-pill">Sustainable size</span> Sized on your full Hyperliquid balance (treated as risk
+        capital). Sized to stay well clear of liquidation; not maxed out. A {settings.sigmaN}σ move against you should cost
+        at most {settings.tailLossPct}% of the balance. Saved in this browser only — never sent anywhere.
+      </p>
+    </div>
+  )
+}
+
+// A long can't be liquidated if the liq distance is ≥ 100% (price can't fall below 0).
+const liqText = (r) =>
+  r.side === 'LONG' && r.liqPct >= 100
+    ? `No liquidation price — a long at ${r.lev.toFixed(2)}× can't be liquidated`
+    : `Liq ~${r.liqPct.toFixed(0)}% away, ${r.liqInSigma.toFixed(1)}× expected move`
+
+function StressTable({ r }) {
+  return (
+    <table className="stress-table">
+      <thead>
+        <tr><th>Adverse move</th><th>Loss</th><th>% bal</th><th>Liquidated?</th></tr>
+      </thead>
+      <tbody>
+        {r.stress.map((x) => (
+          <tr key={x.k}>
+            <td>{x.k}σ ({x.movePct.toFixed(1)}%)</td>
+            <td>{usd0(x.lossUsd)}</td>
+            <td>{x.lossPctBal.toFixed(1)}%</td>
+            <td className={x.liquidated ? 'change-down' : ''}>{x.liquidated ? 'Yes' : 'No'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function SizeLine({ r, primary }) {
+  if (r.side === 'FLAT') {
+    return (
+      <div className={`size-line ${primary ? 'size-primary' : 'size-alt'}`}>
+        <p className="size-head"><span className="size-coin">{r.coin}</span> <span className="side-pill side-flat">FLAT</span> <strong>$0</strong> — stay flat / no new position</p>
+      </div>
+    )
+  }
+  return (
+    <div className={`size-line ${primary ? 'size-primary' : 'size-alt'}`}>
+      <p className="size-head">
+        <span className="size-coin">{r.coin}</span>{' '}
+        <span className={`side-pill side-${r.side.toLowerCase()}`}>{r.side}</span>{' '}
+        <strong>{usd0(r.notional)}</strong> notional · <strong>{r.lev.toFixed(2)}×</strong> account leverage
+      </p>
+      {primary ? (
+        <>
+          <p className="size-detail">
+            Margin {usd0(r.margin)} at {r.capLev}× · stop ~{r.stopPct.toFixed(1)}% (1σ, {r.days}d) → loss {usd0(r.lossAtStop)} if hit
+          </p>
+          <p className="size-detail">
+            <strong>{liqText(r)}</strong> (cross, maint. {r.mmrPct.toFixed(2)}%) · size limited by {r.binding}
+          </p>
+          {r.fundingPct != null && (
+            <p className="size-detail">
+              Funding {r.days}d {r.fundingSrc}: {r.side.toLowerCase()} {r.fundingUsd >= 0 ? 'pays' : 'earns'}{' '}
+              {usd0(Math.abs(r.fundingUsd))} ({Math.abs(r.fundingPct).toFixed(3)}% of notional at current hourly rate)
+            </p>
+          )}
+          <StressTable r={r} />
+          {(r.ivFallback || r.hlMaxFallback) && (
+            <p className="size-detail muted-text">
+              {r.ivFallback ? 'DVOL unavailable — assumed 60% IV. ' : ''}
+              {r.hlMaxFallback ? `Hyperliquid max leverage unavailable — assumed ${r.hlMax}×.` : ''}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="size-detail">
+          Instead of BTC: stop ~{r.stopPct.toFixed(1)}% · {liqText(r)} · worst
+          stress {r.stress[r.stress.length - 1].lossPctBal.toFixed(1)}% of balance
+          {r.fundingPct != null ? ` · funding ${r.fundingUsd >= 0 ? 'pays' : 'earns'} ${usd0(Math.abs(r.fundingUsd))}` : ''}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SizingBlock({ rows, title = 'Suggested position (Hyperliquid)' }) {
+  if (!rows) return <p className="sizing-empty">Enter your perp balance above to see a suggested position.</p>
+  return (
+    <div className="sizing-block">
+      <p className="perp-action-label">{title}</p>
+      <SizeLine r={rows[0]} primary />
+      {rows[1] && <SizeLine r={rows[1]} />}
+    </div>
+  )
+}
+
+function OverallPanel({ overall, settings, loading }) {
+  if (!settings.balance) {
+    return (
+      <div className="bias-panel overall-panel">
+        <h2>Overall · net position</h2>
+        <p className="sizing-empty">Enter your perp balance to get one net long/short across all three horizons.</p>
+      </div>
+    )
+  }
+  if (!overall) {
+    return (
+      <div className="bias-panel overall-panel">
+        <h2>Overall · net position</h2>
+        <p className="macro-value muted">{loading ? 'Loading…' : 'Unavailable'}</p>
+      </div>
+    )
+  }
+  const btc = overall.coins[0]
+  const maxAbs = Math.max(...btc.contribs.map((c) => Math.abs(c.signed)), 1)
+  const zone = zoneFor(overall.score)
+  return (
+    <div className={`bias-panel overall-panel zone-${btc.side === 'LONG' ? 'bull' : btc.side === 'SHORT' ? 'bear' : 'neutral'}`}>
+      <div className="bias-head">
+        <div>
+          <h2>Overall · net position</h2>
+          <p className="bias-span">
+            blend: ultra {BLEND.ust * 100}% · short {BLEND.st * 100}% · medium {BLEND.mt * 100}% · checked on the {OVERALL_DAYS}d horizon
+          </p>
+        </div>
+        <div className="bias-call">
+          <span className={`zone-pill zone-pill-${zone.key} bias-pill`}>{zone.label}</span>
+          <span className="bias-score">{overall.score > 0 ? '+' : ''}{overall.score.toFixed(2)}</span>
+        </div>
+      </div>
+      <div className="net-breakdown">
+        {btc.contribs.map((c) => (
+          <div className="net-row" key={c.key}>
+            <span className="net-label">{HLABEL[c.key]} <span className="muted-text">×{c.w}</span></span>
+            <span className="net-bar-track">
+              <span className="net-bar-mid" />
+              <span
+                className={`net-bar ${c.signed >= 0 ? 'net-long' : 'net-short'}`}
+                style={{ width: `${(Math.abs(c.signed) / maxAbs) * 50}%`, [c.signed >= 0 ? 'left' : 'right']: '50%' }}
+              />
+            </span>
+            <span className="net-val">{c.own.side === 'FLAT' ? 'flat' : `${c.own.side.toLowerCase()} ${usd0(c.own.notional)}`} → {c.signed >= 0 ? '+' : '−'}{usd0(Math.abs(c.signed))}</span>
+          </div>
+        ))}
+      </div>
+      <p className="perp-read-line net-explain">
+        {overall.disagree
+          ? 'The horizons disagree (some long, some short), so they cancel out — that is why the net is small.'
+          : overall.flats === 3
+            ? 'All three horizons are neutral — no net position.'
+            : overall.flats > 0
+              ? `${overall.flats} of 3 horizons ${overall.flats === 1 ? 'is' : 'are'} neutral, which shrinks the net; the rest point the same way.`
+              : 'All three horizons point the same way.'}
+        {btc.blendedNotional > btc.notional + 1 ? ` Blended size ${usd0(btc.blendedNotional)} trimmed by the ${btc.binding} on the ${OVERALL_DAYS}d horizon.` : ''}
+      </p>
+      <SizingBlock rows={overall.coins} title="Net position to hold (Hyperliquid)" />
+    </div>
+  )
+}
+
 function Gauge({ score }) {
   // -1 (bearish) on the left, +1 (bullish) on the right.
   const pos = score == null ? 50 : ((score + 1) / 2) * 100
@@ -97,7 +326,7 @@ function Gauge({ score }) {
   )
 }
 
-function BiasPanel({ h, bias, ext, ctx, loading }) {
+function BiasPanel({ h, bias, ext, ctx, loading, sizing }) {
   return (
     <div className={`bias-panel zone-${bias.call.key}`}>
       <div className="bias-head">
@@ -118,6 +347,7 @@ function BiasPanel({ h, bias, ext, ctx, loading }) {
         <>
           <Gauge score={bias.score} />
           <PerpRead h={h} bias={bias} ext={ext} ctx={ctx} />
+          <SizingBlock rows={sizing} />
           <p className="bias-meta">
             Confidence <strong>{bias.confidence.label}</strong> ({Math.round(bias.confidence.value * 100)}%) · signal
             agreement {Math.round(bias.agreement * 100)}% · coverage {Math.round(bias.coverage * 100)}%
@@ -408,6 +638,14 @@ export default function Macro() {
     }),
     [signals],
   )
+  const [sizingSettings, setSizingSettings] = useState(loadSizing)
+  useEffect(() => saveSizing(sizingSettings), [sizingSettings])
+  const sizeSettings = useMemo(() => ({ ...loadSizingDefaults(sizingSettings) }), [sizingSettings])
+  const sizings = useMemo(
+    () => Object.fromEntries(HORIZONS.map((h) => [h.key, sizeFor({ bias: biases[h.key], horizon: h.key, settings: sizeSettings, sources, perpRows })])),
+    [biases, sizeSettings, sources, perpRows],
+  )
+  const overall = useMemo(() => sizeOverall({ biases, settings: sizeSettings, sources, perpRows }), [biases, sizeSettings, sources, perpRows])
   const anyLoading = Object.values(sources).some((x) => x.status === 'loading')
   const loaded = signals.filter((s) => s.status === 'success').length
   const venueStatus = Object.fromEntries(PERP_VENUE_KEYS.map((k) => [k, sources[k].status]))
@@ -435,6 +673,8 @@ export default function Macro() {
       </div>
 
       <h2 className="section-title">Bias</h2>
+      <SizingSettings settings={sizingSettings} setSettings={setSizingSettings} />
+      <OverallPanel overall={overall} settings={sizeSettings} loading={anyLoading} />
       <div className="bias-grid">
         {HORIZONS.map((h) => (
           <BiasPanel
@@ -444,9 +684,65 @@ export default function Macro() {
             ext={h.ext ? biases[h.ext] : null}
             ctx={{ perpRows, sources }}
             loading={anyLoading}
+            sizing={sizings[h.key]}
           />
         ))}
       </div>
+      <details className="method">
+        <summary>How the position is sized</summary>
+        <ul>
+          <li>
+            Sized on your <strong>full Hyperliquid balance</strong> (treated as risk capital — no 1%-per-trade haircut),
+            but kept sustainable: never maxed out, liquidation-safe and tail-capped. Suggestions are for BTC; the ETH line
+            is an alternative, not an extra position.
+          </li>
+          <li>
+            <strong>Direction</strong> = sign of the horizon score. Neutral (score within ±0.2) → FLAT, $0.
+          </li>
+          <li>
+            <strong>Conviction</strong> = call tier (Lean = 0.5, full Bullish/Bearish = 1.0) × confidence (High 1.0 ·
+            Medium 0.75 · Low 0.5).
+          </li>
+          <li>
+            <strong>Conviction leverage</strong> = {Math.round(FULL_CALL_SHARE * 100) / 100 === 0.67 ? '⅔' : FULL_CALL_SHARE.toFixed(2)} ×
+            min(your max leverage, Hyperliquid maxLeverage) × conviction. At the default 3× cap, a full high-confidence call
+            uses 2×, a Lean call ≤ 1×.
+          </li>
+          <li>
+            <strong>σ (expected move)</strong> = Deribit DVOL ÷ 100 × √(days ÷ 365), with days = {SIZING_DAYS.ust} (ultra),
+            {' '}{SIZING_DAYS.st} (short), {SIZING_DAYS.mt} (medium); the Overall card uses the longest ({OVERALL_DAYS}d).
+          </li>
+          <li>
+            <strong>Liquidation distance</strong> ≈ 1 ÷ leverage − maintenance margin, with maintenance ≈ 1 ÷ (2 ×
+            Hyperliquid maxLeverage), cross margin on the whole balance, no other positions.{' '}
+            <strong>Liquidation guard:</strong> distance must be ≥ max({LIQ_BUFFER_EM}, your σ level) × σ, i.e. leverage ≤ 1 ÷
+            (that × σ + maintenance).
+          </li>
+          <li>
+            <strong>Tail cap:</strong> leverage × N·σ ≤ your max tail loss (defaults 6σ, 30%) → leverage ≤ 30% ÷ (6σ).
+          </li>
+          <li>
+            <strong>Final leverage</strong> = min(conviction leverage, max leverage, liquidation guard, tail cap); notional
+            = balance × leverage. The card says which limit bound. Margin is shown at your capped leverage.
+          </li>
+          <li>
+            <strong>Stop</strong> ≈ 1σ for the horizon (information only; it sits far inside liquidation). Loss at stop =
+            notional × stop %. The stress table shows the loss at 4σ, 5σ and 6σ adverse moves.
+          </li>
+          <li>
+            <strong>Funding</strong> uses Hyperliquid's current hourly rate × 24 × days, held constant (it will not be).
+          </li>
+          <li>
+            <strong>Overall / net</strong> = Σ weight × each horizon's own capped signed notional (ultra {BLEND.ust * 100}%,
+            short {BLEND.st * 100}%, medium {BLEND.mt * 100}%), then re-checked against the caps on the {OVERALL_DAYS}d
+            horizon. Opposite horizons cancel, so disagreement means a small net.
+          </li>
+          <li>
+            <strong>Caveats:</strong> heuristics, not advice, not backtested. Crypto tails are fat — real crashes can exceed
+            what implied vol suggests, gaps can skip your stop, and other open positions change your liquidation price.
+          </li>
+        </ul>
+      </details>
       <details className="method">
         <summary>How the bias is calculated</summary>
         <ul>
