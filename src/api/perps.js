@@ -115,7 +115,13 @@ export async function fetchOkxFundingHistory(coins = PERP_COINS) {
       const xs = norm.filter((r) => r.t >= since).map((r) => r.rate8h)
       return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null
     }
-    out[c] = { avg24h: avg(now - 24 * 3_600_000), avg7d: avg(now - 7 * 24 * 3_600_000), samples: norm.length }
+    out[c] = {
+      avg24h: avg(now - 24 * 3_600_000),
+      avg7d: avg(now - 7 * 24 * 3_600_000),
+      samples: norm.length,
+      last: norm[0]?.rate8h ?? null, // latest settled print (v3)
+      lastTime: norm[0]?.t ?? null,
+    }
   })
   if (!Object.keys(out).length) throw new Error('No data')
   return out
@@ -286,7 +292,21 @@ export async function fetchDeribitPerps(coins = PERP_COINS) {
     if (!basis || Math.abs(dte - 90) < Math.abs(basis.dte - 90)) basis = cand
   }
 
-  return { perps: out, basis }
+  // v3: basis term structure — every dated BTC future ≥ 3 days out, front vs back.
+  const curve = []
+  for (const r of btc?.result ?? []) {
+    const m = /^BTC-(\d{1,2})([A-Z]{3})(\d{2})$/.exec(r.instrument_name)
+    if (!m || MONTHS.indexOf(m[2]) < 0) continue
+    const dte = (Date.UTC(2000 + Number(m[3]), MONTHS.indexOf(m[2]), Number(m[1]), 8) - now) / 86_400_000
+    const mark = num(r.mark_price)
+    const index = num(r.estimated_delivery_price)
+    if (!(dte >= 3) || !mark || !index) continue
+    curve.push({ instrument: r.instrument_name, dte, annualizedPct: (mark / index - 1) * (365 / dte) * 100 })
+  }
+  curve.sort((a, b) => a.dte - b.dte)
+  const basisTerm = curve.length >= 2 ? { front: curve[0], back: curve[curve.length - 1], curve } : null
+
+  return { perps: out, basis, basisTerm }
 }
 
 // ---------- dYdX v4 ----------

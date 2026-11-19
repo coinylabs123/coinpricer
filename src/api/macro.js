@@ -108,6 +108,10 @@ export async function fetchStablecoinSupply() {
     totalUsd: now,
     change7d: week ? (now / week - 1) * 100 : null,
     change30d: month ? (now / month - 1) * 100 : null,
+    change1d: (() => {
+      const day = sum('circulatingPrevDay')
+      return day ? (now / day - 1) * 100 : null
+    })(),
   }
 }
 
@@ -134,6 +138,7 @@ export async function fetchDeribitOptions() {
       type: m[5],
       iv: num(r.mark_iv),
       underlying: num(r.underlying_price),
+      oi,
     })
   }
   if (!calls) throw new Error('No data')
@@ -160,5 +165,50 @@ export async function fetchDeribitOptions() {
       }
     }
   }
-  return { putOi: puts, callOi: calls, pcr: puts / calls, instruments: rows.length, skew }
+  // ---- v3 additions (same response, no extra request) ----
+  const pickLeg = (e, type, target) =>
+    e.legs
+      .filter((l) => l.type === type && l.iv)
+      .sort((a, b) => Math.abs(a.strike - target) - Math.abs(b.strike - target))[0]
+  const spotOf = (e) => e?.legs.find((l) => l.underlying)?.underlying
+  const atmIv = (e) => {
+    const spot = spotOf(e)
+    if (!spot) return null
+    const c = pickLeg(e, 'C', spot)
+    const p = pickLeg(e, 'P', spot)
+    const ivs = [c?.iv, p?.iv].filter((x) => x != null)
+    return ivs.length ? ivs.reduce((a, b) => a + b, 0) / ivs.length : null
+  }
+  const nearest = (target, lo, hi) => {
+    let b = null
+    for (const e of byExpiry.values()) {
+      if (e.dte < lo || e.dte > hi) continue
+      if (!b || Math.abs(e.dte - target) < Math.abs(b.dte - target)) b = e
+    }
+    return b
+  }
+  // Front expiry (≥ 1 day out, so it isn't settling today): put/call OI.
+  const front = [...byExpiry.values()].filter((e) => e.dte >= 1).sort((a, b) => a.dte - b.dte)[0]
+  let frontPcr = null
+  if (front) {
+    const p = front.legs.filter((l) => l.type === 'P').reduce((a, l) => a + (l.oi ?? 0), 0)
+    const c = front.legs.filter((l) => l.type === 'C').reduce((a, l) => a + (l.oi ?? 0), 0)
+    if (c) frontPcr = { dte: front.dte, putOi: p, callOi: c, pcr: p / c }
+  }
+  // Short-dated skew: ~7-day expiry (2–14 days), 5% OTM put IV − call IV.
+  let shortSkew = null
+  const wk = nearest(7, 2, 14)
+  const wkSpot = spotOf(wk)
+  if (wk && wkSpot) {
+    const put = pickLeg(wk, 'P', wkSpot * 0.95)
+    const call = pickLeg(wk, 'C', wkSpot * 1.05)
+    if (put && call) shortSkew = { dte: wk.dte, putStrike: put.strike, callStrike: call.strike, putIv: put.iv, callIv: call.iv, skew: put.iv - call.iv }
+  }
+  // ATM IV term structure: ~7d vs ~30d.
+  const m30 = nearest(30, 20, 45)
+  const ivTerm = wk && m30 && atmIv(wk) != null && atmIv(m30) != null
+    ? { frontDte: wk.dte, backDte: m30.dte, frontIv: atmIv(wk), backIv: atmIv(m30), spread: atmIv(wk) - atmIv(m30) }
+    : null
+
+  return { putOi: puts, callOi: calls, pcr: puts / calls, instruments: rows.length, skew, frontPcr, shortSkew, ivTerm }
 }

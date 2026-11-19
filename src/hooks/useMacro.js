@@ -9,6 +9,7 @@ import {
   fetchOkxFundingHistory,
   fetchOkxPerps,
 } from '../api/perps.js'
+import { fetchBitgetFlow, fetchDvol, fetchGateStats, fetchHlPredicted, fetchMempool, fetchTvl } from '../api/macroExtra.js'
 
 const LOADERS = {
   fng: fetchFearGreed,
@@ -23,6 +24,13 @@ const LOADERS = {
   bitget: () => fetchBitgetPerps(),
   deribit: () => fetchDeribitPerps(),
   dydx: () => fetchDydxPerps(),
+  // v3 additions
+  dvol: fetchDvol,
+  hlPredicted: () => fetchHlPredicted(),
+  gateStats: () => fetchGateStats(),
+  bitgetFlow: () => fetchBitgetFlow(),
+  tvl: fetchTvl,
+  mempool: fetchMempool,
 }
 
 export const PERP_VENUE_KEYS = ['okx', 'hyperliquid', 'gate', 'bitget', 'deribit', 'dydx']

@@ -7,6 +7,7 @@
 // Thresholds are rules of thumb, not backtested models. Not financial advice.
 import { SOURCES, STABLE_IDS } from '../api/macro.js'
 import { formatCompact } from './format.js'
+import { EXISTING_UST, EXTRA_SIGNALS } from './macroSignalsExtra.js'
 
 export const clamp = (v, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v))
 
@@ -34,7 +35,10 @@ const ok = (s) => s?.status === 'success' && s.data
 const pending = (...xs) => (xs.some((s) => s?.status === 'loading') ? 'loading' : 'error')
 
 // Signal definitions. `compute(ctx)` returns { status, value, raw, context, error }.
-export const SIGNALS = [
+// v3: the original signals below are unchanged (st / mt weights and logic as
+// before). The v3 Ultra-short horizon and the "additional signals" live in
+// macroSignalsExtra.js and are appended to SIGNALS further down.
+const BASE_SIGNALS = [
   // ---------- Positioning & sentiment (short-term) ----------
   {
     id: 'funding',
@@ -328,6 +332,12 @@ export const SIGNALS = [
   },
 ]
 
+// Original signals (+ an Ultra-short weight on four of them) followed by the v3 signals.
+export const SIGNALS = [
+  ...BASE_SIGNALS.map((s) => (EXISTING_UST[s.id] ? { ...s, ust: EXISTING_UST[s.id] } : s)),
+  ...EXTRA_SIGNALS,
+]
+
 export function evaluateSignals(ctx) {
   return SIGNALS.map((def) => {
     let res
@@ -337,11 +347,21 @@ export function evaluateSignals(ctx) {
       res = { status: 'error', error: e?.message }
     }
     const score = res.status === 'success' && res.raw != null ? def.score(res.raw) : null
-    return { ...def, ...res, context: res.context ?? [], score }
+    // stExt / mtExt = original weight + additional weight, used only for the
+    // separate "with additional signals" read; the original st / mt calls ignore them.
+    return {
+      ...def,
+      ...res,
+      context: res.context ?? [],
+      score,
+      ust: def.ust ?? 0,
+      stExt: (def.st || 0) + (def.stx || 0),
+      mtExt: (def.mt || 0) + (def.mtx || 0),
+    }
   })
 }
 
-// Bias for one horizon ('st' | 'mt').
+// Bias for one horizon ('ust' | 'st' | 'mt' | 'stExt' | 'mtExt').
 // score      = Σ(w·s) / Σ(w) over available signals
 // agreement  = Σ(w·|s|) on the same side as the score / Σ(w·|s|)
 // confidence = coverage × (0.5·min(1, |score|/0.6) + 0.5·agreement)  → High ≥0.6 · Medium ≥0.4 · Low

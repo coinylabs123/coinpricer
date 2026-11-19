@@ -70,6 +70,13 @@ export function buildPerpRows(sources) {
     const next8h = okx?.nextFundingTime ?? venues.filter((v) => v.intervalH >= 4 && v.nextFundingTime).map((v) => v.nextFundingTime).sort()[0] ?? null
     const pos = positioningFor(fundingPct)
     const oi = oiLevelFor(oiPct)
+    // v3 additions (do not affect the existing columns above)
+    const hlp = sources.hlPredicted?.data?.[coin]
+    const cexPred = [hlp?.binance?.rate8h, hlp?.bybit?.rate8h].filter((x) => x != null).map((x) => x * 100)
+    const okxNow = [okx?.funding8h, okx?.predicted8h].filter((x) => x != null).map((x) => x * 100)
+    const okx24 = hist?.[coin]?.avg24h != null ? hist[coin].avg24h * 100 : null
+    const oiChange24hPct = sources.gateStats?.data?.[coin]?.oiChangePct ?? null
+    const squeeze = squeezeFor(pos, oi)
     return {
       coin,
       venues,
@@ -85,7 +92,30 @@ export function buildPerpRows(sources) {
       premiumPct: prem,
       positioning: pos,
       oiLevel: oi,
-      squeeze: squeezeFor(pos, oi),
+      squeeze,
+      binBybitPredPct: avg(cexPred),
+      fundingMomentumPct: okxNow.length && okx24 != null ? avg(okxNow) - okx24 : null,
+      oiChange24hPct,
+      carry3dLongPct: fundingPct == null ? null : fundingPct * 9, // 9 × 8h periods in 3 days
+      tradeRead: tradeReadFor(pos, oi, oiChange24hPct),
     }
   })
+}
+
+// v3: one-word perp read per coin, for picking which coin to trade.
+// Combines funding positioning, OI level (% of mcap) and 24h OI change (Gate.io).
+export function tradeReadFor(pos, oi, oiChg) {
+  if (pos.key === 'na') return { key: 'na', label: '—', title: 'No funding data' }
+  const levered = oi.pts >= 1 || (oiChg != null && oiChg >= 3)
+  if (pos.side < 0 && levered)
+    return { key: 'squeeze-long', label: 'Squeeze long', title: 'Shorts are paying and leverage is high or building — short-squeeze candidate; longs get paid funding' }
+  if (pos.side < 0)
+    return { key: 'contra-long', label: 'Contrarian long', title: 'Shorts are paying funding — longs get paid to wait' }
+  if (pos.crowded && levered)
+    return { key: 'fade-long', label: 'Fade longs', title: 'Crowded longs with high/building leverage — long-flush candidate; shorts get paid funding' }
+  if (pos.side > 0)
+    return { key: 'avoid-long', label: "Don't chase", title: 'Longs are paying above baseline — expensive to hold longs, wait for a reset' }
+  if (oiChg != null && oiChg <= -5)
+    return { key: 'reset', label: 'Reset', title: 'Open interest dropped sharply — leverage flushed, cleaner entries either way' }
+  return { key: 'no-edge', label: 'No edge', title: 'Funding near baseline and leverage normal — no positioning edge' }
 }
