@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchDeribitOptions, fetchFearGreed, fetchGlobal, fetchPrices, fetchStablecoinSupply } from '../api/macro.js'
 import {
+  fetchBinancePerps,
   fetchBitgetPerps,
   fetchDeribitPerps,
   fetchDydxPerps,
@@ -24,6 +25,7 @@ const LOADERS = {
   bitget: () => fetchBitgetPerps(),
   deribit: () => fetchDeribitPerps(),
   dydx: () => fetchDydxPerps(),
+  binance: () => fetchBinancePerps(),
   // v3 additions
   dvol: fetchDvol,
   hlPredicted: () => fetchHlPredicted(),
@@ -33,7 +35,7 @@ const LOADERS = {
   mempool: fetchMempool,
 }
 
-export const PERP_VENUE_KEYS = ['okx', 'hyperliquid', 'gate', 'bitget', 'deribit', 'dydx']
+export const PERP_VENUE_KEYS = ['okx', 'hyperliquid', 'gate', 'bitget', 'deribit', 'dydx', 'binance']
 
 const initial = () =>
   Object.fromEntries(Object.keys(LOADERS).map((k) => [k, { status: 'loading', data: null, error: null }]))

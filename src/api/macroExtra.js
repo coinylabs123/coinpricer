@@ -10,8 +10,10 @@
 //   - DefiLlama /overview/dexs: ~2.5 MB per load (≈0.5 MB gzipped) — too heavy.
 //   - DefiLlama /overview/derivatives: HTTP 402 (paid plan only).
 //   - DefiLlama stablecoin flows by exchange: not offered on the free API.
-//   - Binance 451, Bybit 403, BitMEX 403 (region-blocked) — but Binance and
-//     Bybit *predicted funding* is available via Hyperliquid's predictedFundings.
+//   - Binance 451 from some browser regions: now fetched server-side by
+//     api/binance.js (see fetchBinancePerps in perps.js). Bybit 403 and
+//     BitMEX 403 (region-blocked) — Bybit *predicted funding* still comes via
+//     Hyperliquid's predictedFundings.
 
 import { PERP_COINS } from './perps.js'
 
@@ -22,6 +24,7 @@ export const EXTRA_SOURCES = {
   bitgetFlow: { label: 'Bitget taker buy/sell & account long/short', home: 'https://www.bitget.com/futures/usdt' },
   tvl: { label: 'DefiLlama total DeFi TVL', home: 'https://defillama.com' },
   mempool: { label: 'mempool.space mining stats', home: 'https://mempool.space/mining' },
+  binance: { label: 'Binance USDⓈ-M futures (via /api/binance)', home: 'https://www.binance.com/en/futures' },
 }
 
 const num = (v) => {

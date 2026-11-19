@@ -5,7 +5,7 @@ import { COIN_GECKO_IDS, PERP_COINS, VENUES } from '../api/perps.js'
 // baseline (interest component) on most CEX perps.
 export const FUNDING_BANDS = { crowdedLong: 0.03, leanLong: 0.015, leanShort: -0.005, crowdedShort: -0.02 }
 // OI as % of the coin's market cap, summed over the venues we can see (a subset
-// of the whole market — Binance, Bybit and CME are not included).
+// of the whole market — Binance is included when /api/binance is up; Bybit and CME are not).
 export const OI_BANDS = { high: 2.0, elevated: 1.0 }
 
 export function positioningFor(f) {
@@ -38,6 +38,22 @@ export function squeezeFor(pos, oi) {
 
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
 
+// 24h OI change: OI-weighted across the venues that publish OI history
+// (Gate.io hourly contract stats, and Binance openInterestHist when the
+// /api/binance function is up). Falls back to whichever one is available.
+export function oiChange24hFor(coin, sources) {
+  const parts = [
+    ['gate', 'Gate', sources.gateStats?.data?.[coin]],
+    ['binance', 'Binance', sources.binance?.data?.stats?.[coin]],
+  ]
+    .filter(([, , d]) => d?.oiChangePct != null)
+    .map(([venue, label, d]) => ({ venue, label, pct: d.oiChangePct, oiUsd: d.oiUsd || 0, hours: d.hours }))
+  if (!parts.length) return { pct: null, oiUsd: null, parts }
+  const w = parts.reduce((a, p) => a + (p.oiUsd || 1), 0)
+  const pct = parts.reduce((a, p) => a + p.pct * (p.oiUsd || 1), 0) / w
+  return { pct, oiUsd: parts.reduce((a, p) => a + p.oiUsd, 0), parts }
+}
+
 export function buildPerpRows(sources) {
   const prices = sources.prices?.data
   const hist = sources.okxHistory?.data
@@ -48,6 +64,7 @@ export function buildPerpRows(sources) {
     bitget: sources.bitget?.data,
     deribit: sources.deribit?.data?.perps,
     dydx: sources.dydx?.data,
+    binance: sources.binance?.data?.perps,
   }
   return PERP_COINS.map((coin) => {
     const venues = Object.entries(venueData)
@@ -75,7 +92,8 @@ export function buildPerpRows(sources) {
     const cexPred = [hlp?.binance?.rate8h, hlp?.bybit?.rate8h].filter((x) => x != null).map((x) => x * 100)
     const okxNow = [okx?.funding8h, okx?.predicted8h].filter((x) => x != null).map((x) => x * 100)
     const okx24 = hist?.[coin]?.avg24h != null ? hist[coin].avg24h * 100 : null
-    const oiChange24hPct = sources.gateStats?.data?.[coin]?.oiChangePct ?? null
+    const oiChg = oiChange24hFor(coin, sources)
+    const oiChange24hPct = oiChg.pct
     const squeeze = squeezeFor(pos, oi)
     return {
       coin,
@@ -96,6 +114,7 @@ export function buildPerpRows(sources) {
       binBybitPredPct: avg(cexPred),
       fundingMomentumPct: okxNow.length && okx24 != null ? avg(okxNow) - okx24 : null,
       oiChange24hPct,
+      oiChange24hParts: oiChg.parts,
       carry3dLongPct: fundingPct == null ? null : fundingPct * 9, // 9 × 8h periods in 3 days
       tradeRead: tradeReadFor(pos, oi, oiChange24hPct),
     }
@@ -103,7 +122,7 @@ export function buildPerpRows(sources) {
 }
 
 // v3: one-word perp read per coin, for picking which coin to trade.
-// Combines funding positioning, OI level (% of mcap) and 24h OI change (Gate.io).
+// Combines funding positioning, OI level (% of mcap) and 24h OI change (Gate.io + Binance, OI-weighted).
 export function tradeReadFor(pos, oi, oiChg) {
   if (pos.key === 'na') return { key: 'na', label: '—', title: 'No funding data' }
   const levered = oi.pts >= 1 || (oiChg != null && oiChg >= 3)

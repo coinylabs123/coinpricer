@@ -583,7 +583,7 @@ const PERP_COLS = [
   // v3 additions
   { key: 'binBybitPredPct', label: 'Binance/Bybit pred.', title: 'Average Binance + Bybit predicted next funding /8h (via Hyperliquid predictedFundings)', className: 'perp-col-optional' },
   { key: 'fundingMomentumPct', label: 'Funding Δ vs 24h', title: 'OKX current/predicted funding minus OKX 24h average (pts /8h). Rising = longs piling in', className: 'perp-col-optional' },
-  { key: 'oiChange24hPct', label: 'OI 24h Δ', title: 'Open-interest change over ~24h on Gate.io (the only free CORS source with OI history)', className: 'perp-col-optional' },
+  { key: 'oiChange24hPct', label: 'OI 24h Δ', title: 'Open-interest change over ~24h, OI-weighted across Gate.io and Binance (when /api/binance is up)', className: 'perp-col-optional' },
   { key: 'carry3dLongPct', label: '3d cost (long)', title: 'Funding a long pays over 3 days (9 × 8h) at current funding, % of notional. Negative = long earns; shorts get the opposite', className: 'perp-col-optional' },
 ]
 
@@ -932,8 +932,8 @@ export default function Macro() {
           </li>
           <li>
             OI level (OI as % of market cap, visible venues only): ≥ {OI_BANDS.high}% high · ≥ {OI_BANDS.elevated}%
-            elevated. Binance, Bybit and CME are not included (geo-blocked or no browser access), so totals understate the
-            whole market.
+            elevated. Binance is included when /api/binance is up; Bybit and CME are not (geo-blocked or no browser
+            access), so totals still understate the whole market.
           </li>
           <li>
             Squeeze risk: crowding points (2 crowded / 1 leaning) + OI points (2 high / 1 elevated). ≥4 High, 3 Medium, 2
@@ -979,9 +979,12 @@ export default function Macro() {
 
       <p className="fine-print">
         Fetched directly from your browser once per page load (no keys, no polling): alternative.me, CoinGecko,
-        DefiLlama, OKX, Hyperliquid, Gate.io, Bitget, Deribit, dYdX and mempool.space public APIs. Binance, Bybit, BitMEX, Kraken
-        Futures, MEXC, KuCoin and Coinbase International were tested and left out (geo-blocked or no browser/CORS access);
-        Binance and Bybit predicted funding comes via Hyperliquid. Also tested and left out: OKX rubik stats (OI
+        DefiLlama, OKX, Hyperliquid, Gate.io, Bitget, Deribit, dYdX and mempool.space public APIs. Binance USDⓈ-M public
+        market data (funding, mark/index, OI, OI history, long/short and taker ratios) is fetched by this site&apos;s own
+        server function (/api/binance, cached 60 s) because browsers in some regions are blocked; if it fails, Binance shows
+        as unavailable and everything else works as before. Bybit, BitMEX, Kraken Futures, MEXC, KuCoin and Coinbase
+        International were tested and left out (geo-blocked or no browser/CORS access); Bybit predicted funding comes via
+        Hyperliquid. Also tested and left out: OKX rubik stats (OI
         history, taker volume, long/short — no CORS), DefiLlama DEX-volume overview (~2.5 MB per load) and DefiLlama
         derivatives overview (paid only). Gate.io contract stats include a mark-price field, which is ignored.
       </p>

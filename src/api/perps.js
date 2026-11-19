@@ -31,6 +31,7 @@ export const VENUES = {
   bitget: { label: 'Bitget', home: 'https://www.bitget.com/futures/usdt' },
   deribit: { label: 'Deribit', home: 'https://www.deribit.com' },
   dydx: { label: 'dYdX v4', home: 'https://dydx.trade' },
+  binance: { label: 'Binance', home: 'https://www.binance.com/en/futures' },
 }
 
 const num = (v) => {
@@ -313,6 +314,47 @@ export async function fetchDeribitPerps(coins = PERP_COINS) {
   const basisTerm = curve.length >= 2 ? { front: curve[0], back: curve[curve.length - 1], curve } : null
 
   return { perps: out, basis, basisTerm }
+}
+
+// ---------- Binance USDⓈ-M (via our own /api/binance function) ----------
+// Browsers in some regions get HTTP 451 from fapi.binance.com, so Binance is
+// fetched server-side by api/binance.js (public market data only, fixed
+// whitelist, CDN-cached 60 s). Optional: if the function fails, Binance is
+// simply shown as "unavailable" and every other venue works as before.
+// Returns { perps: { COIN: venueRow }, stats: { COIN: { oiChange24hPct, ... } } }.
+export async function fetchBinancePerps(coins = PERP_COINS) {
+  const json = await getJson('/api/binance')
+  const perps = {}
+  const stats = {}
+  for (const c of coins) {
+    const r = json?.coins?.[c]
+    if (!r) continue
+    perps[c] = {
+      venue: 'binance',
+      funding8h: num(r.funding8h),
+      intervalH: num(r.intervalH) ?? 8,
+      nextFundingTime: num(r.nextFundingTime),
+      predicted8h: null, // Binance's live rate is already the estimate for the next settlement
+      oiUsd: num(r.oiUsd),
+      mark: num(r.mark),
+      index: num(r.indexPrice ?? r.index),
+      premium: num(r.premium),
+      note: `USDⓈ-M ${r.symbol}; ${num(r.intervalH) === 8 ? '8h' : `${r.intervalH}h`} funding; OI × mark`,
+    }
+    stats[c] = {
+      oiUsd: num(r.oiUsd),
+      oiChangePct: num(r.oiChange24hPct),
+      hours: num(r.oiHours),
+      accountLsr: num(r.accountLsr),
+      accountLsrThen: num(r.accountLsrThen),
+      longAccountPct: num(r.longAccountPct),
+      topPositionLsr: num(r.topPositionLsr),
+      takerRatio: num(r.takerRatio),
+      takerHours: num(r.takerHours),
+    }
+  }
+  if (!Object.keys(perps).length) throw new Error(json?.error || 'No data')
+  return { perps, stats, region: json?.region ?? null, fetchedAt: num(json?.fetchedAt) }
 }
 
 // ---------- dYdX v4 ----------

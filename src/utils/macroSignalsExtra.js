@@ -25,6 +25,7 @@
 import { SOURCES } from '../api/macro.js'
 import { EXTRA_SOURCES } from '../api/macroExtra.js'
 import { formatCompact } from './format.js'
+import { oiChange24hFor } from './perpsAnalysis.js'
 
 const clamp = (v, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v))
 function linear(value, bullAt, bearAt) {
@@ -92,19 +93,18 @@ export const EXTRA_SIGNALS = [
     group: 'ultra',
     title: 'Open interest 24h change × funding',
     st: 0, mt: 0, ust: 10, stx: 10,
-    rule: 'Gate.io BTC+ETH OI change over ~24h. OI rising: score = funding score × min(1, Δ/6%) (new leverage on the crowded side amplifies the contrarian read). OI falling: +0.4 × min(1, |Δ|/6%) (deleveraging clears the deck).',
+    rule: 'BTC+ETH OI change over ~24h (Gate.io, plus Binance when available; OI-weighted). OI rising: score = funding score × min(1, Δ/6%) (new leverage on the crowded side amplifies the contrarian read). OI falling: +0.4 × min(1, |Δ|/6%) (deleveraging clears the deck).',
     explain: 'OI change shows whether new leverage is entering. Rising OI with shorts paying = squeeze fuel; rising OI with hot funding = long-flush fuel.',
     bull: (x) => 'leverage is building on the short side or being flushed out — supportive',
     bear: 'new leverage is building on the long side — flush risk',
-    sources: [EXTRA_SOURCES.gateStats],
+    sources: [EXTRA_SOURCES.gateStats, EXTRA_SOURCES.binance],
     score: (x) => x,
     compute({ perpRows, sources }) {
-      const g = sources.gateStats.data
-      if (!ok(sources.gateStats)) return fail(sources.gateStats)
-      const items = MAJORS.map((c) => (g[c]?.oiChangePct != null ? { c, ...g[c] } : null)).filter(Boolean)
+      if (!ok(sources.gateStats) && !ok(sources.binance)) return fail(sources.gateStats, sources.binance)
+      const items = MAJORS.map((c) => ({ c, ...oiChange24hFor(c, sources) })).filter((x) => x.pct != null)
       if (!items.length) return { status: 'error', error: 'No OI history' }
       const w = items.reduce((a, x) => a + (x.oiUsd || 1), 0)
-      const chg = items.reduce((a, x) => a + x.oiChangePct * (x.oiUsd || 1), 0) / w
+      const chg = items.reduce((a, x) => a + x.pct * (x.oiUsd || 1), 0) / w
       const f = majorsFunding(perpRows)
       if (f == null) return fail(sources.okx)
       const fs = fundingScore(f)
@@ -113,7 +113,10 @@ export const EXTRA_SIGNALS = [
         status: 'success',
         raw: s,
         value: `${spct(chg)} OI (24h)`,
-        context: [...items.map((x) => `${x.c} ${spct(x.oiChangePct)} → ${usd(x.oiUsd)} on Gate (${Math.round(x.hours)}h)`), `BTC+ETH funding ${spct(f, 4)} / 8h`],
+        context: [
+          ...items.map((x) => `${x.c} ${spct(x.pct)} → ${usd(x.oiUsd)} (${x.parts.map((p) => `${p.label} ${spct(p.pct, 1)}`).join(' · ')})`),
+          `BTC+ETH funding ${spct(f, 4)} / 8h`,
+        ],
       }
     },
   },
@@ -214,11 +217,11 @@ export const EXTRA_SIGNALS = [
     group: 'ultra',
     title: 'Taker buy/sell ratio (24h)',
     st: 0, mt: 0, ust: 6, stx: 5,
-    rule: 'Average of Bitget and Gate.io BTC+ETH taker buy ÷ sell over 24h: ≥ 1.10 → +1 (aggressive buying); 1.00 → 0; ≤ 0.90 → −1. Trend-following.',
+    rule: 'Average of Bitget, Gate.io and Binance (when available) BTC+ETH taker buy ÷ sell over 24h: ≥ 1.10 → +1 (aggressive buying); 1.00 → 0; ≤ 0.90 → −1. Trend-following.',
     explain: 'Who is hitting the market — buyers lifting offers or sellers hitting bids. Persistent taker buying tends to carry price for a few days.',
     bull: 'takers are net buyers — aggressive demand',
     bear: 'takers are net sellers — aggressive supply',
-    sources: [EXTRA_SOURCES.bitgetFlow, EXTRA_SOURCES.gateStats],
+    sources: [EXTRA_SOURCES.bitgetFlow, EXTRA_SOURCES.gateStats, EXTRA_SOURCES.binance],
     score: (r) => linear(r, 1.1, 0.9),
     compute({ sources }) {
       const vals = []
@@ -226,11 +229,14 @@ export const EXTRA_SIGNALS = [
       for (const c of MAJORS) {
         const b = sources.bitgetFlow.data?.[c]?.takerRatio
         const g = sources.gateStats.data?.[c]?.takerRatio
+        const n = sources.binance?.data?.stats?.[c]?.takerRatio
         if (b != null) vals.push(b)
         if (g != null) vals.push(g)
-        if (b != null || g != null) ctx.push(`${c} Bitget ${b != null ? b.toFixed(2) : '—'} · Gate ${g != null ? g.toFixed(2) : '—'}`)
+        if (n != null) vals.push(n)
+        if (b != null || g != null || n != null)
+          ctx.push(`${c} Bitget ${b != null ? b.toFixed(2) : '—'} · Gate ${g != null ? g.toFixed(2) : '—'} · Binance ${n != null ? n.toFixed(2) : '—'}`)
       }
-      if (!vals.length) return fail(sources.bitgetFlow, sources.gateStats)
+      if (!vals.length) return fail(sources.bitgetFlow, sources.gateStats, sources.binance)
       const r = avg(vals)
       return { status: 'success', raw: r, value: r.toFixed(2), context: ctx }
     },
@@ -303,11 +309,11 @@ export const EXTRA_SIGNALS = [
     group: 'ultra',
     title: 'Retail long/short accounts (24h change)',
     st: 0, mt: 0, ust: 4,
-    rule: 'Average 24h change of the account long/short ratio (Bitget + Gate.io, BTC+ETH): ≤ −10% → +1 (crowd turning short, contrarian); 0 → 0; ≥ +10% → −1 (crowd piling long).',
+    rule: 'Average 24h change of the account long/short ratio (Bitget + Gate.io + Binance when available, BTC+ETH): ≤ −10% → +1 (crowd turning short, contrarian); 0 → 0; ≥ +10% → −1 (crowd piling long).',
     explain: 'Most retail accounts are long most of the time, so the level is less useful than the change. A crowd rushing to one side is the side that gets squeezed.',
     bull: 'the crowd is turning short — contrarian bullish',
     bear: 'the crowd is piling into longs — contrarian bearish',
-    sources: [EXTRA_SOURCES.bitgetFlow, EXTRA_SOURCES.gateStats],
+    sources: [EXTRA_SOURCES.bitgetFlow, EXTRA_SOURCES.gateStats, EXTRA_SOURCES.binance],
     score: (v) => linear(v, -10, 10),
     compute({ sources }) {
       const vals = []
@@ -315,12 +321,17 @@ export const EXTRA_SIGNALS = [
       for (const c of MAJORS) {
         const b = sources.bitgetFlow.data?.[c]
         const g = sources.gateStats.data?.[c]
+        const n = sources.binance?.data?.stats?.[c]
         const gChg = g?.accountLsr != null && g?.accountLsrThen ? (g.accountLsr / g.accountLsrThen - 1) * 100 : null
+        const nChg = n?.accountLsr != null && n?.accountLsrThen ? (n.accountLsr / n.accountLsrThen - 1) * 100 : null
         if (b?.accountLsrChangePct != null) vals.push(b.accountLsrChangePct)
         if (gChg != null) vals.push(gChg)
-        ctx.push(`${c} Bitget ${b?.accountLsr != null ? b.accountLsr.toFixed(2) : '—'} (${spct(b?.accountLsrChangePct ?? null, 1)}) · Gate ${g?.accountLsr != null ? g.accountLsr.toFixed(2) : '—'} (${spct(gChg, 1)})`)
+        if (nChg != null) vals.push(nChg)
+        ctx.push(
+          `${c} Bitget ${b?.accountLsr != null ? b.accountLsr.toFixed(2) : '—'} (${spct(b?.accountLsrChangePct ?? null, 1)}) · Gate ${g?.accountLsr != null ? g.accountLsr.toFixed(2) : '—'} (${spct(gChg, 1)}) · Binance ${n?.accountLsr != null ? n.accountLsr.toFixed(2) : '—'} (${spct(nChg, 1)})`,
+        )
       }
-      if (!vals.length) return fail(sources.bitgetFlow, sources.gateStats)
+      if (!vals.length) return fail(sources.bitgetFlow, sources.gateStats, sources.binance)
       const v = avg(vals)
       return { status: 'success', raw: v, value: spct(v, 1), context: ctx }
     },
@@ -516,7 +527,7 @@ export function carryFor(perpRows, days, basis = 'now') {
 export function crowdingHint({ perpRows, sources }) {
   const f = majorsFunding(perpRows)
   if (f == null) return null
-  const oi = sources.gateStats?.data?.BTC?.oiChangePct
+  const oi = oiChange24hFor('BTC', sources).pct
   const b = sources.bitgetFlow?.data?.BTC
   const parts = []
   let side

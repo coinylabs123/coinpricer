@@ -30,7 +30,7 @@ export const SOURCES = {
     home: 'https://defillama.com/stablecoins',
   },
   perps: {
-    label: 'Perp venues (OKX, Hyperliquid, Gate.io, Bitget, Deribit, dYdX)',
+    label: 'Perp venues (OKX, Hyperliquid, Gate.io, Bitget, Deribit, dYdX, Binance)',
     home: 'https://www.coinglass.com/FundingRate',
   },
   okxHistory: {
