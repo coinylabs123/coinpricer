@@ -9,7 +9,7 @@
 //                 × confidence (High 1.0 · Medium 0.75 · Low 0.5); Neutral = 0
 //   cap lev     = min(your max-leverage setting [default 3×], Hyperliquid maxLeverage)
 //   conv. lev   = ⅔ × cap lev × conviction             (default: full call 2×, Lean ≤ 1×)
-//   σ (1 sigma) = DVOL/100 × √(days / 365)              (= expected move; Overall uses the longest horizon)
+//   σ (1 sigma) = DVOL/100 × √(days / 365)              (= expected move; Overall uses a 7-day hold)
 //   maint. m    = 1 / (2 × HL maxLeverage) of notional
 //   liq dist    ≈ 1 / lev − m                          (cross margin, whole balance, no other positions)
 //   liq guard   : liq dist ≥ max(3, N) × σ   ⇒  lev ≤ 1 / (max(3, N)·σ + m)
@@ -20,8 +20,8 @@
 //   funding     = HL hourly funding × 24 × days × notional (current rate held flat)
 //
 // Overall / net: each horizon's own (capped) signed BTC notional blended
-//   ultra 30% · short 40% · medium 30%  →  net = Σ w × signed notional,
-// then re-checked against the guards on the LONGEST horizon (30d σ).
+//   1-week view: ultra 45% · short 45% · medium 10%  →  net = Σ w × signed notional,
+// then re-checked against the guards on a 7-day hold (7d σ, 7d funding).
 import { carryFor } from './macroSignalsExtra.js'
 
 export const SIZING_KEY = 'coinpricer.perpSizing'
@@ -30,8 +30,9 @@ export const SIZING_DEFAULTS = { balance: null, maxLev: 3, tailLossPct: 30, sigm
 // Ultra-short = "next 3–4 days"; Short-term = "days → ~2 weeks";
 // Medium-term = "weeks → ~3 months" — its existing funding line uses 30d, so sizing does too.
 export const SIZING_DAYS = { ust: 3.5, st: 14, mt: 30 }
-export const BLEND = { ust: 0.3, st: 0.4, mt: 0.3 }
-export const OVERALL_DAYS = Math.max(...Object.values(SIZING_DAYS))
+// Overall card = a 1-week position (user request): weights tilted to the short horizons.
+export const BLEND = { ust: 0.45, st: 0.45, mt: 0.1 }
+export const OVERALL_DAYS = 7
 export const FULL_CALL_SHARE = 2 / 3
 export const LIQ_BUFFER_EM = 3
 export const STRESS_SIGMAS = [4, 5, 6]

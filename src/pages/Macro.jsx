@@ -18,6 +18,7 @@ import {
   sizeFor,
   sizeOverall,
 } from '../utils/positionSizing.js'
+import { BASE_REWARD, LIQ_FLOOR, MAX_PICKS, MAX_WEIGHT, allocateNet } from '../utils/netAllocation.js'
 
 const usd = (v) => (v == null ? '—' : formatCompact(v, 'usd'))
 const spct = (v, d = 4) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}%`)
@@ -48,10 +49,6 @@ function PerpRead({ h, bias, ext, ctx }) {
   const extAction = ext ? actionFor(ext) : null
   return (
     <div className="perp-read">
-      <p className="perp-action">
-        <span className="perp-action-label">Perp read</span>
-        <span className={`action-pill action-${action.key}`}>{action.label}</span>
-      </p>
       {key.length > 0 && (
         <p className="perp-read-line">
           <strong>Key drivers:</strong>{' '}
@@ -124,38 +121,37 @@ function SizingSettings({ settings, setSettings }) {
   const set = (k) => (v) => setSettings((s) => ({ ...s, [k]: v }))
   return (
     <div className="sizing-settings">
-      <div className="sizing-row">
-        <label className="sizing-field sizing-field-balance">
-          <span className="sizing-label">Perp account balance (USD)</span>
-          <span className="sizing-input-wrap">
-            <span className="sizing-prefix">$</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="e.g. 10,000"
-              value={balText}
-              onChange={(e) => {
-                setBalText(e.target.value)
-                setSettings((s) => ({ ...s, balance: parseAmount(e.target.value) }))
-              }}
-              onBlur={() => setBalText(fmtBal(settings.balance))}
-              aria-label="Perp account balance in USD"
-            />
-          </span>
-        </label>
-        <NumField label="Max leverage" suffix="×" min={LIMITS.maxLev[0]} max={LIMITS.maxLev[1]} step={0.5}
-          value={settings.maxLev ?? ''} onChange={set('maxLev')} hint="capped by Hyperliquid's max" />
-        <NumField label="Max tail loss" suffix="% bal" min={LIMITS.tailLossPct[0]} max={LIMITS.tailLossPct[1]} step={1}
-          value={settings.tailLossPct ?? ''} onChange={set('tailLossPct')} />
-        <NumField label="Tail move" suffix="σ" min={LIMITS.sigmaN[0]} max={LIMITS.sigmaN[1]} step={0.5}
-          value={settings.sigmaN ?? ''} onChange={set('sigmaN')} />
-      </div>
-      <p className="sizing-note">
-        <span className="sustain-pill">Sustainable size</span> Sized on your full Hyperliquid balance (treated as risk
-        capital). Sized to stay well clear of liquidation; not maxed out. A {settings.sigmaN}σ move against you should cost
-        at most {settings.tailLossPct}% of the balance. Saved in this browser only — never sent anywhere.
-      </p>
+      <label className="sizing-field sizing-field-balance">
+        <span className="sizing-label">Hyperliquid balance (USD)</span>
+        <span className="sizing-input-wrap">
+          <span className="sizing-prefix">$</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="e.g. 10,000"
+            value={balText}
+            onChange={(e) => {
+              setBalText(e.target.value)
+              setSettings((s) => ({ ...s, balance: parseAmount(e.target.value) }))
+            }}
+            onBlur={() => setBalText(fmtBal(settings.balance))}
+            aria-label="Perp account balance in USD"
+          />
+        </span>
+      </label>
+      <details className="sizing-limits">
+        <summary>Limits: {settings.maxLev}× max · {settings.tailLossPct}% max loss on {settings.sigmaN}σ</summary>
+        <div className="sizing-row">
+          <NumField label="Max leverage" suffix="×" min={LIMITS.maxLev[0]} max={LIMITS.maxLev[1]} step={0.5}
+            value={settings.maxLev ?? ''} onChange={set('maxLev')} />
+          <NumField label="Max tail loss" suffix="% bal" min={LIMITS.tailLossPct[0]} max={LIMITS.tailLossPct[1]} step={1}
+            value={settings.tailLossPct ?? ''} onChange={set('tailLossPct')} />
+          <NumField label="Tail move" suffix="σ" min={LIMITS.sigmaN[0]} max={LIMITS.sigmaN[1]} step={0.5}
+            value={settings.sigmaN ?? ''} onChange={set('sigmaN')} />
+        </div>
+        <p className="sizing-note">Saved in this browser only — never sent anywhere.</p>
+      </details>
     </div>
   )
 }
@@ -234,77 +230,160 @@ function SizeLine({ r, primary }) {
   )
 }
 
-function SizingBlock({ rows, title = 'Suggested position (Hyperliquid)' }) {
-  if (!rows) return <p className="sizing-empty">Enter your perp balance above to see a suggested position.</p>
+function SizingBlock({ rows }) {
+  if (!rows) return null
+  const r = rows[0]
   return (
     <div className="sizing-block">
-      <p className="perp-action-label">{title}</p>
-      <SizeLine r={rows[0]} primary />
-      {rows[1] && <SizeLine r={rows[1]} />}
+      <p className="size-one">
+        <span className="perp-action-label">Position</span>{' '}
+        {r.side === 'FLAT' ? (
+          <span className="side-pill side-flat">FLAT</span>
+        ) : (
+          <>
+            <span className={`side-pill side-${r.side.toLowerCase()}`}>{r.side === 'LONG' ? 'Long' : 'Short'}</span>{' '}
+            <strong>{usd0(r.notional)}</strong> · {r.lev.toFixed(2)}× <span className="muted-text">BTC</span>
+          </>
+        )}
+      </p>
     </div>
   )
 }
 
-function OverallPanel({ overall, settings, loading }) {
-  if (!settings.balance) {
-    return (
-      <div className="bias-panel overall-panel">
-        <h2>Overall · net position</h2>
-        <p className="sizing-empty">Enter your perp balance to get one net long/short across all three horizons.</p>
-      </div>
-    )
-  }
-  if (!overall) {
-    return (
-      <div className="bias-panel overall-panel">
-        <h2>Overall · net position</h2>
-        <p className="macro-value muted">{loading ? 'Loading…' : 'Unavailable'}</p>
-      </div>
-    )
-  }
-  const btc = overall.coins[0]
-  const maxAbs = Math.max(...btc.contribs.map((c) => Math.abs(c.signed)), 1)
-  const zone = zoneFor(overall.score)
+function StressRows({ stress }) {
   return (
-    <div className={`bias-panel overall-panel zone-${btc.side === 'LONG' ? 'bull' : btc.side === 'SHORT' ? 'bear' : 'neutral'}`}>
-      <div className="bias-head">
-        <div>
-          <h2>Overall · net position</h2>
-          <p className="bias-span">
-            blend: ultra {BLEND.ust * 100}% · short {BLEND.st * 100}% · medium {BLEND.mt * 100}% · checked on the {OVERALL_DAYS}d horizon
-          </p>
-        </div>
-        <div className="bias-call">
-          <span className={`zone-pill zone-pill-${zone.key} bias-pill`}>{zone.label}</span>
-          <span className="bias-score">{overall.score > 0 ? '+' : ''}{overall.score.toFixed(2)}</span>
-        </div>
-      </div>
-      <div className="net-breakdown">
-        {btc.contribs.map((c) => (
-          <div className="net-row" key={c.key}>
-            <span className="net-label">{HLABEL[c.key]} <span className="muted-text">×{c.w}</span></span>
-            <span className="net-bar-track">
-              <span className="net-bar-mid" />
-              <span
-                className={`net-bar ${c.signed >= 0 ? 'net-long' : 'net-short'}`}
-                style={{ width: `${(Math.abs(c.signed) / maxAbs) * 50}%`, [c.signed >= 0 ? 'left' : 'right']: '50%' }}
-              />
-            </span>
-            <span className="net-val">{c.own.side === 'FLAT' ? 'flat' : `${c.own.side.toLowerCase()} ${usd0(c.own.notional)}`} → {c.signed >= 0 ? '+' : '−'}{usd0(Math.abs(c.signed))}</span>
-          </div>
+    <table className="stress-table">
+      <thead>
+        <tr><th>All coins move against you</th><th>Loss</th><th>% bal</th><th>Liquidated?</th></tr>
+      </thead>
+      <tbody>
+        {stress.map((x) => (
+          <tr key={x.k}>
+            <td>{x.k}σ</td>
+            <td>{usd0(x.lossUsd)}</td>
+            <td>{x.lossPctBal.toFixed(1)}%</td>
+            <td className={x.liquidated ? 'change-down' : ''}>{x.liquidated ? 'Yes' : 'No'}</td>
+          </tr>
         ))}
+      </tbody>
+    </table>
+  )
+}
+
+function OverallPanel({ overall, alloc, settings, setSettings, loading }) {
+  const btc = overall?.coins?.[0]
+  const side = alloc?.total > 0 ? alloc.side : 'FLAT'
+  const zoneKey = side === 'LONG' ? 'bull' : side === 'SHORT' ? 'bear' : 'neutral'
+  const maxAbs = btc ? Math.max(...btc.contribs.map((c) => Math.abs(c.signed)), 1) : 1
+  return (
+    <div className={`bias-panel overall-panel zone-${zoneKey}`}>
+      <div className="overall-top">
+        <div className="overall-headline">
+          <p className="perp-action-label">Overall · net position</p>
+          {!settings.balance ? (
+            <p className="net-big muted-text">Enter your balance</p>
+          ) : !overall || !alloc ? (
+            <p className="net-big muted-text">{loading ? 'Loading…' : 'Unavailable'}</p>
+          ) : side === 'FLAT' ? (
+            <p className="net-big">FLAT</p>
+          ) : (
+            <p className={`net-big net-${side.toLowerCase()}-text`}>NET {side} {usd0(alloc.total)}</p>
+          )}
+          {overall && alloc && side !== 'FLAT' && (
+            <p className="net-sub">
+              1-week position · {alloc.lev.toFixed(2)}× effective leverage · {zoneFor(overall.score).label} {overall.score > 0 ? '+' : ''}
+              {overall.score.toFixed(2)}
+            </p>
+          )}
+        </div>
+        <SizingSettings settings={settings} setSettings={setSettings} />
       </div>
-      <p className="perp-read-line net-explain">
-        {overall.disagree
-          ? 'The horizons disagree (some long, some short), so they cancel out — that is why the net is small.'
-          : overall.flats === 3
-            ? 'All three horizons are neutral — no net position.'
-            : overall.flats > 0
-              ? `${overall.flats} of 3 horizons ${overall.flats === 1 ? 'is' : 'are'} neutral, which shrinks the net; the rest point the same way.`
-              : 'All three horizons point the same way.'}
-        {btc.blendedNotional > btc.notional + 1 ? ` Blended size ${usd0(btc.blendedNotional)} trimmed by the ${btc.binding} on the ${OVERALL_DAYS}d horizon.` : ''}
-      </p>
-      <SizingBlock rows={overall.coins} title="Net position to hold (Hyperliquid)" />
+      {alloc && alloc.picks.length > 0 && (
+        <table className="net-table">
+          <thead>
+            <tr><th>Ticker</th><th>Side</th><th>USD</th><th>% net</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            {alloc.picks.map((p) => (
+              <tr key={p.coin}>
+                <td className="size-coin">{p.coin}</td>
+                <td><span className={`side-pill side-${alloc.side.toLowerCase()}`}>{alloc.side === 'LONG' ? 'Long' : 'Short'}</span></td>
+                <td>{usd0(p.notional)}</td>
+                <td>{p.pctNet.toFixed(0)}%</td>
+                <td className="net-why">{p.why}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {overall && alloc && (
+        <details className="net-details">
+          <summary>Details</summary>
+          <div className="net-breakdown">
+            {btc.contribs.map((c) => (
+              <div className="net-row" key={c.key}>
+                <span className="net-label">{HLABEL[c.key]} ×{c.w}</span>
+                <span className="net-bar-track">
+                  <span className="net-bar-mid" />
+                  <span
+                    className={`net-bar ${c.signed >= 0 ? 'net-long' : 'net-short'}`}
+                    style={{ width: `${(Math.abs(c.signed) / maxAbs) * 50}%`, [c.signed >= 0 ? 'left' : 'right']: '50%' }}
+                  />
+                </span>
+                <span className="net-val">{c.own.side === 'FLAT' ? 'flat' : `${c.own.side.toLowerCase()} ${usd0(c.own.notional)}`}</span>
+              </div>
+            ))}
+          </div>
+          <ul className="net-facts">
+            <li>
+              {overall.disagree
+                ? 'Horizons disagree, so they cancel — that is why the net is small.'
+                : overall.flats === 3
+                  ? 'All three horizons are neutral.'
+                  : overall.flats > 0
+                    ? `${overall.flats} of 3 horizons neutral, which shrinks the net.`
+                    : 'All three horizons agree.'}
+            </li>
+            {alloc.total > 0 && <><li>
+              Blended size {usd0(alloc.desired)} → {usd0(alloc.total)}
+              {alloc.shrunk ? `, cut by the ${alloc.binding}${alloc.binding.includes('tail') ? ' (alts swing more than BTC)' : ''}.` : ' — no cap needed to cut it.'}
+            </li>
+            <li>
+              Stop ~1σ ({OVERALL_DAYS}d): loss {usd0(alloc.lossAtStop)} · liquidation ≈{' '}
+              {alloc.liqInSigma == null ? '—' : `${alloc.liqInSigma.toFixed(1)}σ away`} · margin {usd0(alloc.margin)} at {settings.maxLev}×
+            </li>
+            <li>
+              Funding {OVERALL_DAYS}d on Hyperliquid (current hourly rate): {alloc.fundingUsd >= 0 ? 'pay' : 'earn'} {usd0(Math.abs(alloc.fundingUsd))}
+            </li></>}
+            {alloc.total === 0 && alloc.binding === 'no eligible coins' && <li>No liquid Hyperliquid coin lines up with the net right now.</li>}
+          </ul>
+          {alloc.stress.length > 0 && <StressRows stress={alloc.stress} />}
+          <table className="stress-table cand-table">
+            <thead>
+              <tr><th>Coin</th><th>σ {OVERALL_DAYS}d</th><th>Read</th><th>Reward</th><th>R/R</th></tr>
+            </thead>
+            <tbody>
+              {alloc.cands
+                .slice()
+                .sort((a, b) => b.rr - a.rr)
+                .map((c) => (
+                  <tr key={c.coin} className={alloc.picks.some((p) => p.coin === c.coin) ? '' : 'muted-text'}>
+                    <td>{c.coin}</td>
+                    <td title={c.ivSrc}>{(c.sigma * 100).toFixed(0)}%</td>
+                    <td>{c.read}</td>
+                    <td>{c.reward.toFixed(2)}</td>
+                    <td>{c.liquid ? c.rr.toFixed(2) : 'illiquid'}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          <p className="sizing-note">
+            Sized on your full Hyperliquid balance (treated as risk capital), kept well clear of liquidation and not maxed
+            out. Alt volatility is a proxy from BTC DVOL. Heuristics, not advice — crypto tails are fat and implied vol can
+            understate crash risk.
+          </p>
+        </details>
+      )}
     </div>
   )
 }
@@ -346,8 +425,15 @@ function BiasPanel({ h, bias, ext, ctx, loading, sizing }) {
       ) : (
         <>
           <Gauge score={bias.score} />
-          <PerpRead h={h} bias={bias} ext={ext} ctx={ctx} />
+          <p className="perp-action">
+            <span className="perp-action-label">Perp read</span>
+            {actionFor(bias) && <span className={`action-pill action-${actionFor(bias).key}`}>{actionFor(bias).label}</span>}
+          </p>
           <SizingBlock rows={sizing} />
+          <details className="net-details">
+          <summary>Details</summary>
+          {sizing && sizing[0].side !== 'FLAT' && <SizeLine r={sizing[0]} primary />}
+          <PerpRead h={h} bias={bias} ext={ext} ctx={ctx} />
           <p className="bias-meta">
             Confidence <strong>{bias.confidence.label}</strong> ({Math.round(bias.confidence.value * 100)}%) · signal
             agreement {Math.round(bias.agreement * 100)}% · coverage {Math.round(bias.coverage * 100)}%
@@ -385,6 +471,7 @@ function BiasPanel({ h, bias, ext, ctx, loading, sizing }) {
               )}
             </div>
           </div>
+          </details>
         </>
       )}
     </div>
@@ -646,6 +733,10 @@ export default function Macro() {
     [biases, sizeSettings, sources, perpRows],
   )
   const overall = useMemo(() => sizeOverall({ biases, settings: sizeSettings, sources, perpRows }), [biases, sizeSettings, sources, perpRows])
+  const alloc = useMemo(
+    () => (overall ? allocateNet({ net: overall.coins[0], perpRows, sources, settings: sizeSettings }) : null),
+    [overall, perpRows, sources, sizeSettings],
+  )
   const anyLoading = Object.values(sources).some((x) => x.status === 'loading')
   const loaded = signals.filter((s) => s.status === 'success').length
   const venueStatus = Object.fromEntries(PERP_VENUE_KEYS.map((k) => [k, sources[k].status]))
@@ -667,14 +758,11 @@ export default function Macro() {
       </div>
 
       <div className="banner banner-warn macro-disclaimer" role="note">
-        <strong>Heuristics, not financial advice.</strong> The bias calls below are mechanical rules of thumb applied
-        to current snapshot data (sentiment, positioning, liquidity). They are not backtested, can stay wrong for weeks,
-        and are no substitute for your own risk management — especially with leverage. No price history is used.
+        <strong>Heuristics, not advice.</strong> Snapshot rules of thumb, not backtested — manage your own risk.
       </div>
 
       <h2 className="section-title">Bias</h2>
-      <SizingSettings settings={sizingSettings} setSettings={setSizingSettings} />
-      <OverallPanel overall={overall} settings={sizeSettings} loading={anyLoading} />
+      <OverallPanel overall={overall} alloc={alloc} settings={sizeSettings} setSettings={setSizingSettings} loading={anyLoading} />
       <div className="bias-grid">
         {HORIZONS.map((h) => (
           <BiasPanel
@@ -693,8 +781,8 @@ export default function Macro() {
         <ul>
           <li>
             Sized on your <strong>full Hyperliquid balance</strong> (treated as risk capital — no 1%-per-trade haircut),
-            but kept sustainable: never maxed out, liquidation-safe and tail-capped. Suggestions are for BTC; the ETH line
-            is an alternative, not an extra position.
+            but kept sustainable: never maxed out, liquidation-safe and tail-capped. Horizon cards size a BTC position;
+            the Overall card spreads its net across the best risk/reward Hyperliquid tickers.
           </li>
           <li>
             <strong>Direction</strong> = sign of the horizon score. Neutral (score within ±0.2) → FLAT, $0.
@@ -710,7 +798,7 @@ export default function Macro() {
           </li>
           <li>
             <strong>σ (expected move)</strong> = Deribit DVOL ÷ 100 × √(days ÷ 365), with days = {SIZING_DAYS.ust} (ultra),
-            {' '}{SIZING_DAYS.st} (short), {SIZING_DAYS.mt} (medium); the Overall card uses the longest ({OVERALL_DAYS}d).
+            {' '}{SIZING_DAYS.st} (short), {SIZING_DAYS.mt} (medium); the Overall card sizes a 1-week position ({OVERALL_DAYS}d).
           </li>
           <li>
             <strong>Liquidation distance</strong> ≈ 1 ÷ leverage − maintenance margin, with maintenance ≈ 1 ÷ (2 ×
@@ -733,9 +821,19 @@ export default function Macro() {
             <strong>Funding</strong> uses Hyperliquid's current hourly rate × 24 × days, held constant (it will not be).
           </li>
           <li>
-            <strong>Overall / net</strong> = Σ weight × each horizon's own capped signed notional (ultra {BLEND.ust * 100}%,
+            <strong>Overall / net (1-week position)</strong> = Σ weight × each horizon's own capped signed notional (ultra {BLEND.ust * 100}%,
             short {BLEND.st * 100}%, medium {BLEND.mt * 100}%), then re-checked against the caps on the {OVERALL_DAYS}d
             horizon. Opposite horizons cancel, so disagreement means a small net.
+          </li>
+          <li>
+            <strong>Ticker split (Overall)</strong>: candidates are the perps-table coins listed on Hyperliquid with HL
+            OI ≥ {usd0(LIQ_FLOOR.oiUsd)} and 24h volume ≥ {usd0(LIQ_FLOOR.volUsd)}. σ = own DVOL for BTC/ETH; alts use BTC
+            DVOL × the higher of a market-cap tier (≥ $50B ×1.5 · $10–50B ×2 · smaller ×2.5) and an HL max-leverage tier
+            (≥ 20× ×1.5 · 10–19× ×2 · lower ×2.5). Reward in the net's direction = {BASE_REWARD} + 0.4·trade read + 0.3·funding
+            + 0.15·premium + 0.15·OI change (0 if the coin's read opposes the net). Risk/reward = reward ÷ σ; top 
+            {MAX_PICKS} are weighted by risk/reward ÷ σ, max {MAX_WEIGHT * 100}% each. The whole basket must pass the tail cap
+            (Σ notional × Nσ ≤ your max loss, all coins moving against you together), the liquidation guard and each
+            coin's HL max leverage; if not, every leg is scaled down.
           </li>
           <li>
             <strong>Caveats:</strong> heuristics, not advice, not backtested. Crypto tails are fat — real crashes can exceed
