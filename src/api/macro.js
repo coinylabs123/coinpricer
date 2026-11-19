@@ -19,7 +19,7 @@ export const SOURCES = {
     url:
       'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&include_market_cap=true&ids=' +
       [
-        'bitcoin', 'ethereum', 'solana', 'ripple', 'dogecoin', 'binancecoin', 'hyperliquid', 'chainlink',
+        'bitcoin', 'ethereum', 'solana', 'ripple', 'dogecoin', 'binancecoin', 'hyperliquid', 'chainlink', 'monero', 'zcash',
         'tether', 'usd-coin', 'usds', 'dai', 'ethena-usde', 'paypal-usd', 'first-digital-usd',
       ].join(','),
     home: 'https://www.coingecko.com',

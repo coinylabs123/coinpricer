@@ -14,7 +14,8 @@
 //                 Don't chase −0.4 · Fade longs −1
 //        funding: the existing funding score (paid-to-hold side scores well)
 //        premium: −premium / 0.1%, clamped ±1 (discount favours longs)
-//        OI chg:  ±(24h OI change / 10%), positive when OI builds against the paying side
+//        OI chg:  (24h OI change / 10%) × ((0.01% − funding) / 0.01%), both clamped ±1 —
+//                 positive when OI builds while shorts pay; ~0 when funding is near baseline
 //      reward = max(0, 0.25 + d·L); 0 if the coin's trade read opposes the net.
 //      (0.25 = base "beta" so a no-edge coin can still carry the macro net.)
 // 4. Risk/reward = reward ÷ σ. Take the top 5 with reward > 0.
@@ -84,7 +85,8 @@ export function allocateNet({ net, perpRows, sources, settings }) {
       const readS = READ_SCORE[readK] ?? 0
       const fundS = f == null ? 0 : fundingScore(f)
       const premS = r.premiumPct == null ? 0 : clamp(-r.premiumPct / 0.1)
-      const oiS = r.oiChange24hPct == null || f == null ? 0 : clamp(r.oiChange24hPct / 10) * (f < 0.01 ? 1 : -1)
+      // scaled by how far funding is from the 0.01% baseline, so it fades to 0 near baseline (no sign flip)
+      const oiS = r.oiChange24hPct == null || f == null ? 0 : clamp(r.oiChange24hPct / 10) * clamp((0.01 - f) / 0.01)
       const L = 0.4 * readS + 0.3 * fundS + 0.15 * premS + 0.15 * oiS
       const opposes = d > 0 ? SHORT_READS.has(readK) : LONG_READS.has(readK)
       const reward = opposes ? 0 : Math.max(0, BASE_REWARD + d * L)

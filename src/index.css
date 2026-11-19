@@ -1564,7 +1564,16 @@ p.macro-context {
 .net-long-text { color: #0b6b3c; }
 .net-short-text { color: #9b1c1c; }
 .net-sub { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
-.overall-panel .sizing-settings { flex: 0 1 300px; margin: 0; padding: 0; border: 0; background: transparent; }
+.overall-panel .sizing-settings {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem;
+  margin: 0.8rem 0 0; padding: 0.6rem 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent;
+}
+.overall-panel .sizing-field-balance { flex: 0 1 260px; flex-direction: row; align-items: center; gap: 0.5rem; }
+.overall-panel .sizing-field-balance .sizing-label { white-space: nowrap; }
+.overall-panel .sizing-field-balance .sizing-input-wrap { flex: 1; }
+.overall-panel .sizing-field-balance .sizing-input-wrap input { font-size: 1rem; padding: 0.3rem 0.2rem; }
+.overall-panel .sizing-limits { margin-top: 0; }
+.overall-panel .sizing-limits[open] { flex-basis: 100%; }
 .sizing-limits { margin-top: 0.35rem; font-size: 0.8rem; }
 .sizing-limits summary { cursor: pointer; color: var(--muted); }
 .sizing-limits .sizing-row { margin-top: 0.4rem; }
@@ -1581,9 +1590,15 @@ p.macro-context {
 .bias-panel .sizing-block { border-style: solid; }
 @media (max-width: 640px) {
   .net-big { font-size: 1.6rem; }
-  .overall-panel .sizing-settings { flex-basis: 100%; }
+  .overall-panel .sizing-field-balance { flex-basis: 100%; }
   .net-table { font-size: 0.82rem; }
   .net-table th, .net-table td { padding: 0.3rem 0.25rem; }
   .net-why { font-size: 0.72rem; }
 }
 .net-table th { white-space: nowrap; }
+.net-breakdown-toggle { margin-top: 0.5rem; }
+.net-breakdown-toggle > summary { list-style: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--muted); display: inline-block; }
+.net-breakdown-toggle > summary::-webkit-details-marker { display: none; }
+.net-breakdown-toggle > summary::before { content: '▸ '; }
+.net-breakdown-toggle[open] > summary::before { content: '▾ '; }
+.net-breakdown-toggle .net-table { margin-top: 0.35rem; }

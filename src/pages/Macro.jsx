@@ -270,7 +270,17 @@ function StressRows({ stress }) {
   )
 }
 
+const BREAKDOWN_KEY = 'coinpricer.netBreakdownOpen'
+const loadBreakdownOpen = () => {
+  try {
+    return localStorage.getItem(BREAKDOWN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 function OverallPanel({ overall, alloc, settings, setSettings, loading }) {
+  const [breakdownOpen, setBreakdownOpen] = useState(loadBreakdownOpen)
   const btc = overall?.coins?.[0]
   const side = alloc?.total > 0 ? alloc.side : 'FLAT'
   const zoneKey = side === 'LONG' ? 'bull' : side === 'SHORT' ? 'bear' : 'neutral'
@@ -296,15 +306,28 @@ function OverallPanel({ overall, alloc, settings, setSettings, loading }) {
             </p>
           )}
         </div>
-        <SizingSettings settings={settings} setSettings={setSettings} />
       </div>
       {alloc && alloc.picks.length > 0 && (
+        <details
+          className="net-breakdown-toggle"
+          open={breakdownOpen}
+          onToggle={(e) => {
+            const open = e.currentTarget.open
+            setBreakdownOpen(open)
+            try {
+              localStorage.setItem(BREAKDOWN_KEY, open ? '1' : '0')
+            } catch {
+              /* storage disabled */
+            }
+          }}
+        >
+          <summary>Breakdown <span className="muted-text">({alloc.picks.length} coins)</span></summary>
         <table className="net-table">
           <thead>
             <tr><th>Ticker</th><th>Side</th><th>USD</th><th>% net</th><th>Why</th></tr>
           </thead>
           <tbody>
-            {alloc.picks.map((p) => (
+            {alloc.picks.slice().sort((a, b) => b.notional - a.notional).map((p) => (
               <tr key={p.coin}>
                 <td className="size-coin">{p.coin}</td>
                 <td><span className={`side-pill side-${alloc.side.toLowerCase()}`}>{alloc.side === 'LONG' ? 'Long' : 'Short'}</span></td>
@@ -315,7 +338,9 @@ function OverallPanel({ overall, alloc, settings, setSettings, loading }) {
             ))}
           </tbody>
         </table>
+        </details>
       )}
+      <SizingSettings settings={settings} setSettings={setSettings} />
       {overall && alloc && (
         <details className="net-details">
           <summary>Details</summary>

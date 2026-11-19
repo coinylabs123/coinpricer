@@ -8,7 +8,8 @@
 // where funding8h / predicted8h are decimals expressed as an 8-hour-equivalent rate,
 // premium is (mark - index) / index as a decimal.
 
-export const PERP_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'HYPE', 'LINK']
+// Not every venue lists every coin (e.g. XMR is not on OKX or Deribit); missing venues are skipped.
+export const PERP_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'HYPE', 'LINK', 'XMR', 'ZEC']
 
 export const COIN_GECKO_IDS = {
   BTC: 'bitcoin',
@@ -19,6 +20,8 @@ export const COIN_GECKO_IDS = {
   BNB: 'binancecoin',
   HYPE: 'hyperliquid',
   LINK: 'chainlink',
+  XMR: 'monero',
+  ZEC: 'zcash',
 }
 
 export const VENUES = {
