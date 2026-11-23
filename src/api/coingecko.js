@@ -137,7 +137,8 @@ export function fetchTopMarkets(vsCurrency) {
     order: 'market_cap_desc',
     per_page: '100',
     page: '1',
-    price_change_percentage: '24h',
+    // Same single request; the extra windows feed the Trend page (current snapshot, no history).
+    price_change_percentage: '1h,24h,7d,14d,30d,200d,1y',
     sparkline: 'false',
   })
   return fetchJson(marketsUrl(params))

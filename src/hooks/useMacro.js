@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchDeribitOptions, fetchFearGreed, fetchGlobal, fetchPrices, fetchStablecoinSupply } from '../api/macro.js'
 import {
   fetchBinancePerps,
@@ -40,35 +40,50 @@ export const PERP_VENUE_KEYS = ['okx', 'hyperliquid', 'gate', 'bitget', 'deribit
 const initial = () =>
   Object.fromEntries(Object.keys(LOADERS).map((k) => [k, { status: 'loading', data: null, error: null }]))
 
-// Loads every source once (on mount / manual refresh). Each source settles
-// independently so one failing source never blocks the others.
-export function useMacro() {
-  const [sources, setSources] = useState(initial)
-  const [updatedAt, setUpdatedAt] = useState(null)
-  const run = useRef(0)
+// One shared snapshot for the whole page load. The Macro and Trend pages both
+// read it, so switching tabs never re-requests any source; only the Refresh
+// button (reload) fetches again. Each source settles independently so one
+// failing source never blocks the others.
+const store = { sources: null, updatedAt: null, run: 0 }
+const listeners = new Set()
+const emit = () => listeners.forEach((fn) => fn())
 
-  const load = useCallback(() => {
-    const id = ++run.current
-    setSources(initial())
-    const jobs = Object.entries(LOADERS).map(([key, fn]) =>
-      fn()
-        .then((data) => {
-          if (id !== run.current) return
-          setSources((s) => ({ ...s, [key]: { status: 'success', data, error: null } }))
-        })
-        .catch((err) => {
-          if (id !== run.current) return
-          setSources((s) => ({ ...s, [key]: { status: 'error', data: null, error: err?.message || 'Failed' } }))
-        }),
-    )
-    Promise.allSettled(jobs).then(() => {
-      if (id === run.current) setUpdatedAt(new Date())
-    })
-  }, [])
+function load() {
+  const id = ++store.run
+  store.sources = initial()
+  store.updatedAt = null
+  emit()
+  const jobs = Object.entries(LOADERS).map(([key, fn]) =>
+    fn()
+      .then((data) => {
+        if (id !== store.run) return
+        store.sources = { ...store.sources, [key]: { status: 'success', data, error: null } }
+        emit()
+      })
+      .catch((err) => {
+        if (id !== store.run) return
+        store.sources = { ...store.sources, [key]: { status: 'error', data: null, error: err?.message || 'Failed' } }
+        emit()
+      }),
+  )
+  Promise.allSettled(jobs).then(() => {
+    if (id !== store.run) return
+    store.updatedAt = new Date()
+    emit()
+  })
+}
+
+export function useMacro() {
+  const [, force] = useState(0)
 
   useEffect(() => {
-    load()
-  }, [load])
+    const fn = () => force((n) => n + 1)
+    listeners.add(fn)
+    if (!store.sources) load() // first consumer in this page load starts the fetch
+    else fn()
+    return () => listeners.delete(fn)
+  }, [])
 
-  return { sources, updatedAt, reload: load }
+  const reload = useCallback(() => load(), [])
+  return { sources: store.sources ?? initial(), updatedAt: store.updatedAt, reload }
 }

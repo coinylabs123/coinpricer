@@ -40,6 +40,13 @@ export default function Navbar({
           </button>
           <button
             type="button"
+            className={view === 'trend' ? 'nav-link active' : 'nav-link'}
+            onClick={() => onNavigate('trend')}
+          >
+            Trend
+          </button>
+          <button
+            type="button"
             className={view === 'about' ? 'nav-link active' : 'nav-link'}
             onClick={() => onNavigate('about')}
           >
