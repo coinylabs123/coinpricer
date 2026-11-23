@@ -6,6 +6,7 @@ import { useRateLimitNotice } from '../hooks/useRateLimitNotice.js'
 import { SEARCH_LIMIT } from '../utils/searchCoins.js'
 import { formatUpdatedAt } from '../utils/format.js'
 import { buildSyncUrl, downloadWatchlistFile, parseWatchlistFile } from '../utils/sync.js'
+import { copyExcelTable } from '../utils/excelExport.js'
 
 export default function Dashboard({
   coins,
@@ -24,6 +25,7 @@ export default function Dashboard({
   const [sortKey, setSortKey] = useState('market_cap_rank')
   const [sortDir, setSortDir] = useState('asc')
   const [copied, setCopied] = useState(false)
+  const [excelCopied, setExcelCopied] = useState(null)
   const [copyError, setCopyError] = useState('')
   const [toast, setToast] = useState('')
   const fileRef = useRef(null)
@@ -153,6 +155,29 @@ export default function Dashboard({
   const showMainTable =
     coins.length > 0 && !(tab === 'watchlist' && watchlist.length === 0) && !failed && filtered.length > 0
 
+  const exportCoins = useMemo(() => {
+    const rows = []
+    if (showMainTable) rows.push(...filtered)
+    if (moreSorted.length) rows.push(...moreSorted)
+    return rows
+  }, [showMainTable, filtered, moreSorted])
+
+  async function handleCopyExcel() {
+    if (!exportCoins.length) {
+      setToast('Nothing to copy.')
+      setTimeout(() => setToast(''), 2500)
+      return
+    }
+    try {
+      await copyExcelTable(exportCoins)
+      setExcelCopied(exportCoins.length)
+      setTimeout(() => setExcelCopied(null), 2000)
+    } catch {
+      setToast('Could not copy. Try again, or select the table and copy it yourself.')
+      setTimeout(() => setToast(''), 4000)
+    }
+  }
+
   function moreErrorMessage() {
     if (!moreError) return ''
     if (moreError.kind === 'rate_limit') {
@@ -214,6 +239,14 @@ export default function Dashboard({
         </div>
 
         <div className="toolbar-actions">
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={handleCopyExcel}
+            disabled={!exportCoins.length}
+          >
+            {excelCopied != null ? `Copied ${excelCopied} rows` : 'Copy for Excel'}
+          </button>
           <button type="button" className="btn btn-outline" onClick={handleCopySyncLink}>
             {copied ? 'Link copied' : 'Copy sync link'}
           </button>
