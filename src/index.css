@@ -1604,47 +1604,22 @@ p.macro-context {
 .net-breakdown-toggle .net-table { margin-top: 0.35rem; }
 
 /* ---- Trend page ---- */
-.trend-block { margin: 0 0 1.6rem; }
-.trend-head { display: flex; align-items: baseline; justify-content: flex-start; gap: 0.75rem; flex-wrap: wrap; }
-.trend-head h3 { margin: 0; font-size: 1.05rem; }
-.trend-span { color: var(--muted); font-size: 0.8rem; }
-.trend-dir { margin: 0.2rem 0 0; font-size: 1.25rem; line-height: 1.2; }
-.trend-up { color: #0b6b3c; }
-.trend-down { color: #9b1c1c; }
-.trend-dir-note { color: var(--muted); font-size: 0.85rem; font-weight: 400; }
-.trend-windows { margin: 0; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.trend-windows { margin: 0 0 0.45rem; color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .trend-windows-tag { font-size: 0.65rem; letter-spacing: 0.04em; border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 0.25rem; }
-.trend-bars { display: grid; gap: 0.45rem; margin: 0.5rem 0 0.2rem; max-width: 36rem; }
-.trend-row { display: grid; grid-template-columns: 8.2rem 1fr 2.8rem; gap: 0.5rem; align-items: center; font-size: 0.88rem; }
+.trend .trend-bars { display: grid; gap: 0.4rem; margin: 0.15rem 0 0.15rem; max-width: none; }
+.trend-row { display: grid; grid-template-columns: 8.2rem 1fr 2.8rem; gap: 0.45rem; align-items: center; font-size: 0.85rem; }
 .trend-name { color: var(--muted); }
 .trend-arrow { font-size: 0.75rem; }
 .trend-top .trend-name, .trend-top .trend-pct { color: var(--ink); font-weight: 700; }
-.trend-track { height: 0.7rem; background: rgba(0, 0, 0, 0.06); border-radius: 4px; overflow: hidden; }
+.trend-track { height: 0.65rem; background: rgba(0, 0, 0, 0.06); border-radius: 4px; overflow: hidden; }
 .trend-fill { display: block; height: 100%; border-radius: 4px; }
 .trend-cont { background: var(--up); }
 .trend-rev { background: var(--accent); }
 .trend-range { background: #8a97a6; }
 .trend-row:not(.trend-top) .trend-fill { opacity: 0.55; }
 .trend-pct { text-align: right; font-variant-numeric: tabular-nums; }
-.trend-drivers { margin: 0.35rem 0 0; font-size: 0.82rem; line-height: 1.35; }
-.trend-conf { margin: 0; color: var(--muted); font-size: 0.78rem; }
-.trend-inds { margin-top: 0.7rem; }
-.trend-inds > summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin: 0 0 0.4rem;
-}
-.trend-group-title {
-  margin: 0.85rem 0 0.55rem;
-  font-size: 0.95rem;
-  padding-left: 0.55rem;
-  border-left: 4px solid var(--line-strong);
-}
-.trend-group-title.trend-group-cont { border-left-color: var(--up); }
-.trend-group-title.trend-group-rev { border-left-color: var(--accent); }
-.trend-group-title.trend-group-range { border-left-color: #8a97a6; }
+.trend-drivers { margin: 0.4rem 0 0; font-size: 0.82rem; line-height: 1.3; }
+.trend .bias-meta { margin: 0.25rem 0 0; }
 .trend-ind { padding: 0.75rem 0.9rem; gap: 0.3rem; }
 .trend-ind .macro-card-head h3 { font-size: 0.92rem; }
 .trend-ind .macro-value { font-size: 1.05rem; }
